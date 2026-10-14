@@ -5,6 +5,7 @@ export const marketQuerySchema = z.object({
   status: z.enum(MarketStatus).optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().min(1).max(50).default(10),
+  category: z.string().trim().min(2).max(100).optional(),
 });
 
 const slugRegex = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
