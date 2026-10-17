@@ -1,6 +1,9 @@
+import "dotenv/config";
+import bcrypt from "bcryptjs";
 import prisma from "../lib/prisma";
+import { INITIAL_CREDITS } from "../lib/credits";
 
-const INITIAL_CREDITS = 1_000;
+const DEV_PASSWORD = "password123";
 
 const userSeeds = [
   { email: "admin@example.com", name: "Market Admin", role: "ADMIN" as const },
@@ -99,6 +102,8 @@ const betSeeds = [
 ];
 
 async function main() {
+  const devPasswordHash = await bcrypt.hash(DEV_PASSWORD, 12);
+
   await prisma.$transaction(
     async (tx) => {
       const users = new Map<string, { id: string }>();
@@ -107,7 +112,7 @@ async function main() {
       for (const seed of userSeeds) {
         let user = await tx.user.findUnique({
           where: { email: seed.email },
-          select: { id: true },
+          select: { id: true, passwordHash: true },
         });
 
         if (!user) {
@@ -116,8 +121,14 @@ async function main() {
               email: seed.email,
               name: seed.name,
               role: seed.role,
+              passwordHash: devPasswordHash,
             },
-            select: { id: true },
+            select: { id: true, passwordHash: true },
+          });
+        } else if (!user.passwordHash) {
+          await tx.user.update({
+            where: { id: user.id },
+            data: { passwordHash: devPasswordHash },
           });
         }
 
@@ -268,6 +279,7 @@ async function main() {
   );
 
   console.log("Development seed completed successfully.");
+  console.log(`Seed accounts use password: ${DEV_PASSWORD}`);
 }
 
 main()
