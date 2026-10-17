@@ -35,10 +35,18 @@ export async function GET(_request: Request, { params }: RouteContext) {
         status: true,
         closesAt: true,
         createdAt: true,
+        resolution: {
+          select: {
+            outcome: true,
+            notes: true,
+            evidenceUrl: true,
+            resolvedAt: true,
+          },
+        },
       },
     });
 
-    if (!market) {
+    if (!market || market.status === "DRAFT") {
       return NextResponse.json({ error: "Market not found" }, { status: 404 });
     }
     const yesBets = await prisma.bet.aggregate({
