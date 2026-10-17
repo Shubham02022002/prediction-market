@@ -1,5 +1,6 @@
 import prisma from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/auth/authorization";
 import {
   marketQuerySchema,
   marketCreationSchema,
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest) {
     }
     const { status, category, page, limit } = result.data;
     const where = {
-      status,
+      status: status && status !== "DRAFT" ? status : { not: "DRAFT" as const },
       category,
     };
     const [markets, totalMarkets] = await Promise.all([
@@ -41,15 +42,54 @@ export async function GET(request: NextRequest) {
           question: true,
           category: true,
           status: true,
+          closesAt: true,
           createdAt: true,
         },
       }),
       prisma.market.count({ where }),
     ]);
     const totalPages = Math.ceil(totalMarkets / limit);
+
+    const marketIds = markets.map((market) => market.id);
+    const pools = marketIds.length
+      ? await prisma.bet.groupBy({
+          by: ["marketId", "outcome"],
+          where: { marketId: { in: marketIds } },
+          _sum: { amount: true },
+        })
+      : [];
+
+    const poolByMarket = new Map<string, { yes: number; no: number }>();
+
+    for (const row of pools) {
+      const entry = poolByMarket.get(row.marketId) ?? { yes: 0, no: 0 };
+      if (row.outcome === "YES") {
+        entry.yes = row._sum.amount ?? 0;
+      } else {
+        entry.no = row._sum.amount ?? 0;
+      }
+      poolByMarket.set(row.marketId, entry);
+    }
+
+    const marketsWithPools = markets.map((market) => {
+      const { yes, no } = poolByMarket.get(market.id) ?? { yes: 0, no: 0 };
+      const total = yes + no;
+
+      return {
+        ...market,
+        pool: {
+          yes,
+          no,
+          total,
+          yesPercentage: total === 0 ? 0 : (yes / total) * 100,
+          noPercentage: total === 0 ? 0 : (no / total) * 100,
+        },
+      };
+    });
+
     return NextResponse.json(
       {
-        markets,
+        markets: marketsWithPools,
         pagination: {
           page,
           limit,
@@ -69,6 +109,15 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const admin = await requireAdmin();
+
+  if (!admin.ok) {
+    return NextResponse.json(
+      { error: admin.status === 401 ? "Unauthorized" : "Forbidden" },
+      { status: admin.status },
+    );
+  }
+
   let requestBody: unknown;
   try {
     requestBody = await request.json();
@@ -80,7 +129,6 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const requestBody = await request.json();
     const result = marketCreationSchema.safeParse(requestBody);
     if (!result.success) {
       return NextResponse.json(
