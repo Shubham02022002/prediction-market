@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { Prisma } from "@/app/generated/prisma/client";
 import prisma from "@/lib/prisma";
+import { INITIAL_CREDITS } from "@/lib/credits";
 import { userRegistrationSchema } from "@/lib/validations/user";
 
 export async function POST(request: Request) {
@@ -56,6 +57,15 @@ export async function POST(request: Request) {
         name: name?.trim() || "New User",
         passwordHash,
         role: "USER",
+        wallet: {
+          create: { balance: INITIAL_CREDITS },
+        },
+        ledgerEntries: {
+          create: {
+            amount: INITIAL_CREDITS,
+            type: "INITIAL_CREDIT",
+          },
+        },
       },
       select: {
         id: true,
