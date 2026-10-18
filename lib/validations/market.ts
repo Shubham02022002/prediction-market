@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MarketStatus } from "@/app/generated/prisma/enums";
+import { MarketStatus, Outcome } from "@/app/generated/prisma/enums";
 
 export const marketQuerySchema = z.object({
   status: z.enum(MarketStatus).optional(),
@@ -49,6 +49,24 @@ export const marketCreationSchema = z.object({
       (value) => new Date(value).getTime() > Date.now(),
       "Closing date must be in the future",
     ),
+});
+
+export const marketResolutionSchema = z.object({
+  outcome: z.enum(Outcome),
+  notes: z.string().trim().max(2000).optional(),
+  evidenceUrl: z
+    .string()
+    .trim()
+    .max(2000)
+    .optional()
+    .refine(
+      (value) => !value || z.url().safeParse(value).success,
+      "Evidence URL must be a valid URL",
+    ),
+});
+
+export const marketVoidSchema = z.object({
+  notes: z.string().trim().max(2000).optional(),
 });
 
 export type MarketQuery = z.infer<typeof marketQuerySchema>;
