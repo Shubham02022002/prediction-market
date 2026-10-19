@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { AuthShell } from "@/components/auth-shell";
 
 type FieldErrors = Record<string, string[] | undefined>;
 
@@ -56,7 +58,7 @@ export default function RegisterPage() {
         return;
       }
 
-      router.push("/");
+      router.push("/markets");
       router.refresh();
     } catch {
       setError("Unable to create account. Please try again.");
@@ -66,118 +68,119 @@ export default function RegisterPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 py-12 text-slate-100">
-      <div className="w-full max-w-md">
-        <div className="mb-8 text-center">
-          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-400 text-2xl font-bold text-slate-950">
-            P
-          </div>
-
-          <h1 className="text-3xl font-bold tracking-tight">Create an account</h1>
-
-          <p className="mt-2 text-sm text-slate-400">
-            Start forecasting with 1,000 virtual credits.
-          </p>
-        </div>
-
-        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl sm:p-8">
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label
-                htmlFor="name"
-                className="mb-2 block text-sm font-medium text-slate-300"
-              >
-                Display name <span className="text-slate-500">(optional)</span>
-              </label>
-
-              <input
-                id="name"
-                type="text"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                autoComplete="name"
-                minLength={3}
-                maxLength={20}
-                placeholder="Ada Lovelace"
-                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none transition placeholder:text-slate-600 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20"
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="email"
-                className="mb-2 block text-sm font-medium text-slate-300"
-              >
-                Email address
-              </label>
-
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                autoComplete="email"
-                placeholder="you@example.com"
-                required
-                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none transition placeholder:text-slate-600 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20"
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="password"
-                className="mb-2 block text-sm font-medium text-slate-300"
-              >
-                Password
-              </label>
-
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                autoComplete="new-password"
-                minLength={8}
-                maxLength={20}
-                placeholder="8-20 characters"
-                required
-                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none transition placeholder:text-slate-600 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20"
-              />
-            </div>
-
-            {error && (
-              <p
-                role="alert"
-                className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300"
-              >
-                {error}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full rounded-lg bg-emerald-400 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {loading ? "Creating account..." : "Create account"}
-            </button>
-          </form>
-
-          <p className="mt-6 text-center text-sm text-slate-400">
-            Already have an account?{" "}
-            <a
+    <AuthShell
+      eyebrow="Create an account"
+      title="Start forecasting."
+      subtitle="Open an account with 1,000 virtual credits and take your first position on the board."
+      footer={
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-muted">
+            Already trading?{" "}
+            <Link
               href="/login"
-              className="font-medium text-emerald-400 hover:text-emerald-300"
+              className="text-ink underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-ink"
             >
               Sign in
-            </a>
+            </Link>
           </p>
+          <Link
+            href="/markets"
+            className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted transition-colors hover:text-ink"
+          >
+            Browse markets →
+          </Link>
+        </div>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <div>
+          <label
+            htmlFor="name"
+            className="flex items-baseline justify-between font-mono text-[10px] uppercase tracking-[0.14em] text-muted"
+          >
+            <span>Display name</span>
+            <span className="normal-case tracking-normal text-muted/70">
+              Optional
+            </span>
+          </label>
+          <input
+            id="name"
+            type="text"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            autoComplete="name"
+            minLength={3}
+            maxLength={20}
+            placeholder="Ada Lovelace"
+            className="mt-2 h-12 w-full border border-line bg-paper px-4 text-sm text-ink outline-none transition-colors placeholder:text-muted/60 focus:border-ink"
+          />
         </div>
 
-        <p className="mt-6 text-center text-xs text-slate-500">
-          For testing purposes, this market uses virtual credits.
+        <div>
+          <label
+            htmlFor="email"
+            className="block font-mono text-[10px] uppercase tracking-[0.14em] text-muted"
+          >
+            Email address
+          </label>
+          <input
+            id="email"
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            autoComplete="email"
+            placeholder="you@example.com"
+            required
+            className="mt-2 h-12 w-full border border-line bg-paper px-4 text-sm text-ink outline-none transition-colors placeholder:text-muted/60 focus:border-ink"
+          />
+        </div>
+
+        <div>
+          <label
+            htmlFor="password"
+            className="flex items-baseline justify-between font-mono text-[10px] uppercase tracking-[0.14em] text-muted"
+          >
+            <span>Password</span>
+            <span className="normal-case tracking-normal text-muted/70">
+              8–20 characters
+            </span>
+          </label>
+          <input
+            id="password"
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            autoComplete="new-password"
+            minLength={8}
+            maxLength={20}
+            placeholder="Choose a password"
+            required
+            className="mt-2 h-12 w-full border border-line bg-paper px-4 text-sm text-ink outline-none transition-colors placeholder:text-muted/60 focus:border-ink"
+          />
+        </div>
+
+        {error && (
+          <p
+            role="alert"
+            className="border border-no/30 bg-no-soft p-3 text-sm text-no"
+          >
+            {error}
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="h-12 w-full bg-ink font-mono text-[10px] uppercase tracking-[0.14em] text-paper transition-colors hover:bg-ink/85 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {loading ? "Creating account…" : "Create account"}
+        </button>
+
+        <p className="font-mono text-[9px] uppercase leading-4 tracking-[0.1em] text-muted">
+          By creating an account you agree to trade with virtual credits only.
+          No real money is involved.
         </p>
-      </div>
-    </main>
+      </form>
+    </AuthShell>
   );
 }
