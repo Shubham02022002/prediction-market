@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
+import { SideChip, StatusPill } from "@/components/market-ui";
+import { formatCredits, formatDate } from "@/lib/format";
 
 type Wallet = {
   balance: number;
@@ -40,22 +42,19 @@ const LEDGER_LABELS: Record<string, string> = {
   ADMIN_ADJUSTMENT: "Adjustment",
 };
 
-function formatDate(value: string) {
-  return new Date(value).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
 export default function PortfolioPage() {
-  const { status: sessionStatus } = useSession();
+  const { data: session, status: sessionStatus } = useSession();
 
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [bets, setBets] = useState<Bet[]>([]);
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (sessionStatus === "loading") {
@@ -116,177 +115,276 @@ export default function PortfolioPage() {
     };
   }, [sessionStatus]);
 
-  if (sessionStatus === "unauthenticated") {
+  const viewStatus = mounted ? sessionStatus : "loading";
+
+  if (viewStatus === "unauthenticated") {
     return (
-      <main className="mx-auto w-full max-w-4xl px-4 py-16 text-center sm:px-6">
-        <h1 className="text-3xl font-bold tracking-tight">Your portfolio</h1>
-        <p className="mt-3 text-sm text-slate-400">
-          Sign in to see your balance, bets, and credit history.
-        </p>
-        <Link
-          href="/login"
-          className="mt-6 inline-block rounded-lg bg-emerald-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300"
-        >
-          Sign in
-        </Link>
+      <main>
+        <section className="border-b border-line">
+          <div className="mx-auto w-full max-w-7xl px-4 pb-12 pt-12 sm:px-6 sm:pt-16">
+            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted">
+              Account
+            </p>
+            <h1 className="mt-4 font-display text-5xl font-semibold tracking-[-0.04em] sm:text-6xl">
+              Portfolio
+            </h1>
+          </div>
+        </section>
+
+        <section className="mx-auto w-full max-w-7xl px-4 py-16 sm:px-6">
+          <div className="max-w-xl border border-line bg-surface p-8">
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted">
+              Sign in required
+            </p>
+            <h2 className="mt-3 font-display text-2xl font-semibold tracking-[-0.02em]">
+              See your balance, positions, and ledger.
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-muted">
+              Your account keeps every bet and credit movement in one place, so
+              you always know where you stand.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link
+                href="/login"
+                className="bg-ink px-5 py-3 font-mono text-[10px] uppercase tracking-[0.14em] text-paper transition-colors hover:bg-ink/85"
+              >
+                Sign in
+              </Link>
+              <Link
+                href="/register"
+                className="border border-line-strong px-5 py-3 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors hover:border-ink"
+              >
+                Create an account
+              </Link>
+            </div>
+          </div>
+        </section>
       </main>
     );
   }
 
+  const openPositions = bets.filter(
+    (bet) => bet.market.status === "OPEN",
+  ).length;
+  const totalStaked = bets.reduce((sum, bet) => sum + bet.amount, 0);
+
   return (
-    <main className="mx-auto w-full max-w-4xl px-4 py-10 sm:px-6">
-      <h1 className="text-3xl font-bold tracking-tight">Your portfolio</h1>
-
-      {error && (
-        <div
-          role="alert"
-          className="mt-6 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300"
-        >
-          {error}
-        </div>
-      )}
-
-      <div className="mt-8 grid gap-4 sm:grid-cols-3">
-        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5 sm:col-span-1">
-          <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
-            Available credits
+    <main>
+      <section className="border-b border-line">
+        <div className="mx-auto w-full max-w-7xl px-4 pb-10 pt-12 sm:px-6 sm:pb-12 sm:pt-16">
+          <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted">
+            Account
           </p>
-          <p className="mt-2 text-3xl font-bold text-emerald-400">
-            {wallet ? wallet.balance.toLocaleString() : "—"}
-          </p>
-        </div>
 
-        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
-          <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
-            Total bets
-          </p>
-          <p className="mt-2 text-3xl font-bold">{loading ? "—" : bets.length}</p>
-        </div>
+          <div className="mt-4 flex flex-wrap items-end justify-between gap-6">
+            <div>
+              <h1 className="font-display text-5xl font-semibold tracking-[-0.04em] sm:text-6xl">
+                Portfolio
+              </h1>
+              <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.12em] text-muted">
+                {session?.user?.email ?? "Signed in"}
+              </p>
+            </div>
 
-        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
-          <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
-            Open positions
-          </p>
-          <p className="mt-2 text-3xl font-bold">
-            {loading
-              ? "—"
-              : bets.filter((bet) => bet.market.status === "OPEN").length}
-          </p>
-        </div>
-      </div>
-
-      <section className="mt-10">
-        <h2 className="text-lg font-semibold">Your bets</h2>
-
-        {loading ? (
-          <div className="mt-4 space-y-3">
-            {Array.from({ length: 3 }).map((_, index) => (
-              <div
-                key={index}
-                className="h-20 animate-pulse rounded-xl border border-slate-800 bg-slate-900"
-              />
-            ))}
-          </div>
-        ) : bets.length === 0 ? (
-          <p className="mt-4 rounded-xl border border-dashed border-slate-800 p-8 text-center text-sm text-slate-500">
-            No bets yet.{" "}
-            <Link href="/" className="text-emerald-400 hover:text-emerald-300">
-              Browse markets
+            <Link
+              href="/markets"
+              className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-ink"
+            >
+              Browse markets <span aria-hidden="true">→</span>
             </Link>
-          </p>
-        ) : (
-          <div className="mt-4 divide-y divide-slate-800 overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
-            {bets.map((bet) => (
-              <Link
-                key={bet.id}
-                href={`/markets/${bet.market.slug}`}
-                className="flex flex-col gap-2 p-4 transition hover:bg-slate-800/50 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-slate-200">
-                    {bet.market.question}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {bet.market.status} · Closes{" "}
-                    {formatDate(bet.market.closesAt)} · Placed{" "}
-                    {formatDate(bet.createdAt)}
-                  </p>
-                </div>
-
-                <div className="flex shrink-0 items-center gap-3">
-                  <span
-                    className={`rounded-md px-2 py-1 text-xs font-semibold ${
-                      bet.outcome === "YES"
-                        ? "bg-emerald-400/10 text-emerald-300"
-                        : "bg-rose-400/10 text-rose-300"
-                    }`}
-                  >
-                    {bet.outcome}
-                  </span>
-                  <span className="text-sm font-semibold text-slate-200">
-                    {bet.amount.toLocaleString()} cr
-                  </span>
-                </div>
-              </Link>
-            ))}
           </div>
-        )}
+        </div>
       </section>
 
-      <section className="mt-10">
-        <h2 className="text-lg font-semibold">Credit history</h2>
-
-        {loading ? (
-          <div className="mt-4 space-y-3">
-            {Array.from({ length: 3 }).map((_, index) => (
-              <div
-                key={index}
-                className="h-14 animate-pulse rounded-xl border border-slate-800 bg-slate-900"
-              />
-            ))}
+      <section className="mx-auto w-full max-w-7xl px-4 sm:px-6">
+        {error && (
+          <div
+            role="alert"
+            className="mt-6 border border-no/30 bg-no-soft px-4 py-4 text-sm text-no"
+          >
+            {error}
           </div>
-        ) : entries.length === 0 ? (
-          <p className="mt-4 rounded-xl border border-dashed border-slate-800 p-8 text-center text-sm text-slate-500">
-            No credit movements yet.
-          </p>
-        ) : (
-          <div className="mt-4 divide-y divide-slate-800 overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
-            {entries.map((entry) => (
-              <div
-                key={entry.id}
-                className="flex items-center justify-between gap-3 p-4"
+        )}
+
+        <dl className="mt-8 grid gap-px border border-line bg-line sm:grid-cols-3">
+          <div className="bg-surface p-5 sm:p-6">
+            <dt className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
+              Available credits
+            </dt>
+            <dd className="mt-2 font-display text-4xl font-semibold leading-none tracking-[-0.03em]">
+              {wallet ? formatCredits(wallet.balance) : "—"}
+            </dd>
+            <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
+              Ready to stake
+            </p>
+          </div>
+
+          <div className="bg-surface p-5 sm:p-6">
+            <dt className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
+              Open positions
+            </dt>
+            <dd className="mt-2 font-display text-4xl font-semibold leading-none tracking-[-0.03em]">
+              {loading ? "—" : openPositions}
+            </dd>
+            <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
+              Markets still trading
+            </p>
+          </div>
+
+          <div className="bg-surface p-5 sm:p-6">
+            <dt className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
+              Total staked
+            </dt>
+            <dd className="mt-2 font-display text-4xl font-semibold leading-none tracking-[-0.03em]">
+              {loading ? "—" : formatCredits(totalStaked)}
+            </dd>
+            <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
+              Across {bets.length} bets
+            </p>
+          </div>
+        </dl>
+
+        <section className="mt-12">
+          <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-ink pb-3">
+            <h2 className="font-display text-2xl font-semibold tracking-[-0.02em]">
+              Positions
+            </h2>
+            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted">
+              {loading ? "Loading" : `${bets.length} bets`}
+            </span>
+          </div>
+
+          {loading ? (
+            <div aria-hidden="true">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div key={index} className="border-b border-line py-5">
+                  <div className="h-3 w-32 animate-pulse bg-line" />
+                  <div className="mt-3 h-5 w-2/3 animate-pulse bg-line" />
+                </div>
+              ))}
+            </div>
+          ) : bets.length === 0 ? (
+            <div className="border-b border-line py-12">
+              <p className="font-display text-xl font-medium">
+                No positions yet.
+              </p>
+              <p className="mt-2 max-w-md text-sm leading-6 text-muted">
+                Find a question you have a view on and take a side. Your open
+                bets will show up here.
+              </p>
+              <Link
+                href="/markets"
+                className="mt-5 inline-block border border-line-strong px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors hover:border-ink"
               >
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-200">
+                Browse markets
+              </Link>
+            </div>
+          ) : (
+            <div>
+              {bets.map((bet) => (
+                <Link
+                  key={bet.id}
+                  href={`/markets/${bet.market.slug}`}
+                  className="group grid gap-3 border-b border-line py-5 sm:grid-cols-[minmax(0,1fr)_80px_130px_150px] sm:items-center"
+                >
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusPill status={bet.market.status} />
+                      <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
+                        Closes {formatDate(bet.market.closesAt)}
+                      </span>
+                    </div>
+                    <p className="mt-2 max-w-[56ch] font-display text-[17px] font-medium leading-snug tracking-[-0.01em] text-ink transition-colors group-hover:text-accent">
+                      {bet.market.question}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-3 sm:contents">
+                    <div>
+                      <SideChip side={bet.outcome} />
+                    </div>
+                    <p className="font-mono text-sm text-ink">
+                      {formatCredits(bet.amount)} cr
+                    </p>
+                  </div>
+
+                  <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted sm:text-right">
+                    Placed {formatDate(bet.createdAt)}
+                  </p>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="mt-12 pb-16">
+          <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-ink pb-3">
+            <h2 className="font-display text-2xl font-semibold tracking-[-0.02em]">
+              Credit history
+            </h2>
+            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted">
+              Latest {Math.min(entries.length, 20)} entries
+            </span>
+          </div>
+
+          {loading ? (
+            <div aria-hidden="true">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div key={index} className="border-b border-line py-4">
+                  <div className="h-4 w-1/2 animate-pulse bg-line" />
+                </div>
+              ))}
+            </div>
+          ) : entries.length === 0 ? (
+            <div className="border-b border-line py-12">
+              <p className="font-display text-xl font-medium">
+                No credit movements yet.
+              </p>
+              <p className="mt-2 text-sm text-muted">
+                Stakes, payouts, and refunds will appear here.
+              </p>
+            </div>
+          ) : (
+            <div>
+              {entries.map((entry) => (
+                <div
+                  key={entry.id}
+                  className="grid gap-2 border-b border-line py-4 sm:grid-cols-[140px_minmax(0,1fr)_130px_120px] sm:items-center sm:gap-4"
+                >
+                  <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-ink">
                     {LEDGER_LABELS[entry.type] ?? entry.type}
                   </p>
-                  <p className="mt-1 truncate text-xs text-slate-500">
+
+                  <div className="min-w-0">
                     {entry.market ? (
                       <Link
                         href={`/markets/${entry.market.slug}`}
-                        className="hover:text-slate-300"
+                        className="block truncate text-sm text-muted transition-colors hover:text-ink"
                       >
                         {entry.market.question}
                       </Link>
                     ) : (
-                      "Account"
-                    )}{" "}
-                    · {formatDate(entry.createdAt)}
+                      <span className="text-sm text-muted">Account</span>
+                    )}
+                  </div>
+
+                  <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted sm:text-right">
+                    {formatDate(entry.createdAt)}
+                  </p>
+
+                  <p
+                    className={`font-mono text-sm sm:text-right ${
+                      entry.amount >= 0 ? "text-yes" : "text-ink"
+                    }`}
+                  >
+                    {entry.amount >= 0 ? "+" : ""}
+                    {formatCredits(entry.amount)} cr
                   </p>
                 </div>
-
-                <span
-                  className={`shrink-0 text-sm font-semibold ${
-                    entry.amount >= 0 ? "text-emerald-400" : "text-rose-400"
-                  }`}
-                >
-                  {entry.amount >= 0 ? "+" : ""}
-                  {entry.amount.toLocaleString()} cr
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </section>
       </section>
     </main>
   );

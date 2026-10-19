@@ -4,9 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { useCallback, useEffect, useState } from "react";
+import { Logo } from "@/components/brand";
+import { formatCredits } from "@/lib/format";
 
 const NAV_LINKS = [
-  { href: "/", label: "Markets" },
+  { href: "/markets", label: "Markets" },
   { href: "/portfolio", label: "Portfolio" },
 ];
 
@@ -14,6 +16,11 @@ export default function Navbar() {
   const pathname = usePathname();
   const { data: session, status } = useSession();
   const [balance, setBalance] = useState<number | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const loadBalance = useCallback(async () => {
     if (status !== "authenticated") {
@@ -52,33 +59,24 @@ export default function Navbar() {
   }
 
   return (
-    <header className="sticky top-0 z-20 border-b border-slate-800 bg-slate-950/90 backdrop-blur">
-      <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4 sm:px-6">
-        <div className="flex items-center gap-8">
-          <Link href="/" className="flex items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-400 text-lg font-bold text-slate-950">
-              P
-            </span>
-            <span className="text-base font-semibold tracking-tight">
-              Prediction Market
-            </span>
-          </Link>
+    <header className="sticky top-0 z-20 border-b border-line bg-paper/90 backdrop-blur-md">
+      <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
+        <div className="flex min-w-0 items-center gap-6 sm:gap-10">
+          <Logo wordmarkClassName="hidden sm:inline" />
 
-          <nav className="hidden items-center gap-1 sm:flex">
+          <nav className="flex items-center gap-4 sm:gap-6">
             {NAV_LINKS.map((link) => {
-              const isActive =
-                link.href === "/"
-                  ? pathname === "/"
-                  : pathname.startsWith(link.href);
+              const isActive = pathname.startsWith(link.href);
 
               return (
                 <Link
                   key={link.href}
                   href={link.href}
-                  className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                  aria-current={isActive ? "page" : undefined}
+                  className={`border-b-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em] transition-colors ${
                     isActive
-                      ? "bg-slate-800 text-slate-100"
-                      : "text-slate-400 hover:bg-slate-900 hover:text-slate-200"
+                      ? "border-ink text-ink"
+                      : "border-transparent text-muted hover:border-line-strong hover:text-ink"
                   }`}
                 >
                   {link.label}
@@ -88,42 +86,48 @@ export default function Navbar() {
           </nav>
         </div>
 
-        <div className="flex items-center gap-3">
-          {status === "authenticated" ? (
+        <div className="flex shrink-0 items-center gap-3 sm:gap-4">
+          {!mounted || status === "loading" ? (
+            <span className="h-8 w-24 animate-pulse bg-line" aria-hidden="true" />
+          ) : status === "authenticated" ? (
             <>
-              <span className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-3 py-1.5 text-sm font-semibold text-emerald-300">
-                {balance === null ? "—" : balance.toLocaleString()} cr
+              <span className="flex items-center gap-2 border border-line bg-surface px-2.5 py-1.5">
+                <span className="hidden font-mono text-[10px] uppercase tracking-[0.12em] text-muted sm:inline">
+                  Bal
+                </span>
+                <span className="font-mono text-xs font-medium text-ink">
+                  {balance === null ? "—" : formatCredits(balance)}
+                </span>
+                <span className="font-mono text-[10px] text-muted">cr</span>
               </span>
 
-              <span className="hidden text-sm text-slate-400 sm:block">
+              <span className="hidden max-w-36 truncate text-sm text-muted md:block">
                 {session.user.name ?? session.user.email}
               </span>
 
               <button
                 type="button"
                 onClick={() => signOut({ callbackUrl: "/" })}
-                className="rounded-lg border border-slate-700 px-3 py-1.5 text-sm font-medium text-slate-300 transition hover:bg-slate-800"
+                className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted transition-colors hover:text-ink"
               >
                 Sign out
               </button>
             </>
-          ) : status === "unauthenticated" ? (
+          ) : (
             <>
               <Link
                 href="/login"
-                className="rounded-lg px-3 py-2 text-sm font-medium text-slate-300 transition hover:text-white"
+                className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted transition-colors hover:text-ink"
               >
                 Sign in
               </Link>
               <Link
                 href="/register"
-                className="rounded-lg bg-emerald-400 px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300"
+                className="border border-ink bg-ink px-3 py-2 font-mono text-[10px] uppercase tracking-[0.12em] text-paper transition-colors hover:bg-ink/85"
               >
-                Create account
+                Start trading
               </Link>
             </>
-          ) : (
-            <span className="text-sm text-slate-500">Loading…</span>
           )}
         </div>
       </div>
