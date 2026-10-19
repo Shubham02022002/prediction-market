@@ -4,6 +4,12 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Suspense, useCallback, useEffect, useState } from "react";
+import { ProbabilityBar, StatusPill } from "@/components/market-ui";
+import {
+  formatCents,
+  formatCredits,
+  formatDate,
+} from "@/lib/format";
 
 type MarketDetail = {
   id: string;
@@ -33,27 +39,16 @@ type Pool = {
 
 type Outcome = "YES" | "NO";
 
-const STATUS_STYLES: Record<string, string> = {
-  OPEN: "border-emerald-400/30 bg-emerald-400/10 text-emerald-300",
-  CLOSED: "border-amber-400/30 bg-amber-400/10 text-amber-300",
-  RESOLVED: "border-sky-400/30 bg-sky-400/10 text-sky-300",
-  VOID: "border-slate-500/30 bg-slate-500/10 text-slate-400",
-};
-
-function formatDate(value: string) {
-  return new Date(value).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
 function MarketSkeleton() {
   return (
-    <main className="mx-auto w-full max-w-5xl px-4 py-10 sm:px-6">
-      <div className="h-8 w-40 animate-pulse rounded bg-slate-800" />
-      <div className="mt-6 h-24 animate-pulse rounded-2xl bg-slate-900" />
-      <div className="mt-6 h-64 animate-pulse rounded-2xl bg-slate-900" />
+    <main className="mx-auto w-full max-w-7xl px-4 py-12 sm:px-6">
+      <div className="h-3 w-24 animate-pulse bg-line" />
+      <div className="mt-8 h-4 w-40 animate-pulse bg-line" />
+      <div className="mt-4 h-12 w-3/4 animate-pulse bg-line" />
+      <div className="mt-10 grid gap-6 lg:grid-cols-[1.35fr_1fr]">
+        <div className="h-64 animate-pulse border border-line bg-surface" />
+        <div className="h-96 animate-pulse border border-line bg-surface" />
+      </div>
     </main>
   );
 }
@@ -82,6 +77,11 @@ function MarketPageContent() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const loadMarket = useCallback(async () => {
     try {
@@ -143,30 +143,30 @@ function MarketPageContent() {
 
   if (loadError || !market || !pool) {
     return (
-      <main className="mx-auto w-full max-w-5xl px-4 py-10 sm:px-6">
-        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-6 text-sm text-red-300">
+      <main className="mx-auto w-full max-w-7xl px-4 py-12 sm:px-6">
+        <div className="border border-no/30 bg-no-soft p-6 text-sm text-no">
           {loadError || "Market not found."}
         </div>
         <Link
-          href="/"
-          className="mt-6 inline-block text-sm font-medium text-emerald-400 hover:text-emerald-300"
+          href="/markets"
+          className="mt-6 inline-block font-mono text-[10px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-ink"
         >
-          ← Back to markets
+          ← Back to the board
         </Link>
       </main>
     );
   }
 
   const hasPool = pool.total > 0;
+  const viewStatus = mounted ? sessionStatus : "loading";
   const isPastClose = new Date(market.closesAt) <= new Date();
   const canTrade =
-    sessionStatus === "authenticated" &&
+    viewStatus === "authenticated" &&
     market.status === "OPEN" &&
     !isPastClose;
 
   const numericAmount = Number(amount);
-  const validAmount =
-    Number.isInteger(numericAmount) && numericAmount > 0;
+  const validAmount = Number.isInteger(numericAmount) && numericAmount > 0;
 
   const winningPool = outcome === "YES" ? pool.yes : pool.no;
   const projectedPool = pool.total + (validAmount ? numericAmount : 0);
@@ -175,6 +175,9 @@ function MarketPageContent() {
     validAmount && projectedWinningPool > 0
       ? Math.floor((numericAmount * projectedPool) / projectedWinningPool)
       : null;
+
+  const yesMultiplier = pool.yes > 0 ? (pool.total / pool.yes).toFixed(1) : null;
+  const noMultiplier = pool.no > 0 ? (pool.total / pool.no).toFixed(1) : null;
 
   async function handleBet() {
     setFormError("");
@@ -226,245 +229,408 @@ function MarketPageContent() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-4 py-10 sm:px-6">
+    <main className="mx-auto w-full max-w-7xl px-4 pb-20 pt-8 sm:px-6">
       <Link
-        href="/"
-        className="text-sm font-medium text-slate-400 transition hover:text-slate-200"
+        href="/markets"
+        className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-ink"
       >
-        ← All markets
+        ← The board
       </Link>
 
-      <div className="mt-6 flex flex-wrap items-center gap-3">
-        <span className="rounded-md bg-slate-800 px-2 py-1 text-xs font-medium text-slate-300">
+      <div className="mt-8 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <StatusPill status={market.status} />
+        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
           {market.category}
         </span>
-        <span
-          className={`rounded-md border px-2 py-1 text-xs font-semibold ${
-            STATUS_STYLES[market.status] ??
-            "border-slate-600 bg-slate-800 text-slate-300"
-          }`}
-        >
-          {market.status}
-        </span>
-        <span className="text-xs text-slate-500">
+        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
           Closes {formatDate(market.closesAt)}
         </span>
       </div>
 
-      <h1 className="mt-4 text-2xl font-bold tracking-tight sm:text-3xl">
+      <h1 className="mt-5 max-w-4xl text-balance font-display text-4xl font-semibold leading-[1.02] tracking-[-0.035em] sm:text-5xl">
         {market.question}
       </h1>
 
       {market.description && (
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
+        <p className="mt-5 max-w-[60ch] text-sm leading-7 text-muted">
           {market.description}
         </p>
       )}
 
-      {market.status === "RESOLVED" && market.resolution && (
-        <div className="mt-6 rounded-xl border border-sky-400/30 bg-sky-400/10 p-4 text-sm text-sky-200">
-          Resolved <strong>{market.resolution.outcome}</strong> on{" "}
-          {formatDate(market.resolution.resolvedAt)}.
-          {market.resolution.notes && (
-            <span className="mt-1 block text-sky-300/80">
-              {market.resolution.notes}
-            </span>
-          )}
-          {market.resolution.evidenceUrl && (
-            <a
-              href={market.resolution.evidenceUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-1 block underline underline-offset-2"
-            >
-              View evidence
-            </a>
-          )}
-        </div>
-      )}
-
-      <div className="mt-8 grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-        <section className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400">
-            Resolution rules
-          </h2>
-          <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-300">
-            {market.rules ?? "No resolution rules were provided for this market."}
-          </p>
-
-          <div className="mt-8">
-            <div className="flex items-center justify-between text-sm">
-              <span className="font-semibold text-emerald-400">
-                YES {pool.yesPercentage.toFixed(1)}%
-              </span>
-              <span className="font-semibold text-rose-400">
-                NO {pool.noPercentage.toFixed(1)}%
+      <div className="mt-10 grid gap-6 lg:grid-cols-[1.35fr_1fr] lg:items-start lg:gap-8">
+        <div className="space-y-6">
+          <section className="border border-line bg-surface">
+            <div className="flex items-center justify-between gap-4 border-b border-line px-5 py-3 sm:px-7">
+              <h2 className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted">
+                Market probability
+              </h2>
+              <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted">
+                {hasPool ? `${formatCredits(pool.total)} cr pooled` : "Awaiting first trade"}
               </span>
             </div>
 
-            <div className="mt-2 flex h-3 overflow-hidden rounded-full bg-slate-800">
+            <div className="grid grid-cols-2">
+              <div className="p-5 sm:p-7">
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-yes">
+                  Yes
+                </p>
+                <p className="mt-2 font-display text-5xl font-semibold leading-none tracking-[-0.04em] text-yes">
+                  {hasPool ? `${Math.round(pool.yesPercentage)}%` : "—"}
+                </p>
+                <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.12em] text-muted">
+                  {hasPool ? formatCents(pool.yesPercentage) : "No price yet"} ·{" "}
+                  {formatCredits(pool.yes)} cr
+                </p>
+              </div>
+
+              <div className="border-l border-line p-5 sm:p-7">
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-no">
+                  No
+                </p>
+                <p className="mt-2 font-display text-5xl font-semibold leading-none tracking-[-0.04em] text-no">
+                  {hasPool ? `${Math.round(pool.noPercentage)}%` : "—"}
+                </p>
+                <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.12em] text-muted">
+                  {hasPool ? formatCents(pool.noPercentage) : "No price yet"} ·{" "}
+                  {formatCredits(pool.no)} cr
+                </p>
+              </div>
+            </div>
+
+            <div className="border-t border-line px-5 py-5 sm:px-7">
               {hasPool ? (
-                <>
-                  <div
-                    className="bg-emerald-400"
-                    style={{ width: `${pool.yesPercentage}%` }}
-                  />
-                  <div
-                    className="bg-rose-400"
-                    style={{ width: `${pool.noPercentage}%` }}
-                  />
-                </>
+                <ProbabilityBar yes={pool.yesPercentage} className="h-2" />
               ) : (
-                <div className="w-full bg-slate-700" />
+                <div className="h-2 w-full bg-line" aria-hidden="true" />
               )}
+
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
+                <span>{formatCredits(pool.yes)} cr on yes</span>
+                <span>{formatCredits(pool.total)} cr total pool</span>
+                <span>{formatCredits(pool.no)} cr on no</span>
+              </div>
+            </div>
+          </section>
+
+          {market.status === "RESOLVED" && market.resolution && (
+            <section className="border border-accent/30 bg-accent-soft p-5 sm:p-7">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">
+                  Resolution
+                </p>
+                <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-accent/70">
+                  {formatDate(market.resolution.resolvedAt)}
+                </p>
+              </div>
+
+              <p className="mt-3 font-display text-2xl font-semibold tracking-[-0.02em]">
+                Resolved{" "}
+                <span
+                  className={
+                    market.resolution.outcome === "YES"
+                      ? "text-yes"
+                      : "text-no"
+                  }
+                >
+                  {market.resolution.outcome}
+                </span>
+                .
+              </p>
+
+              {market.resolution.notes && (
+                <p className="mt-2 max-w-[58ch] text-sm leading-6 text-ink/75">
+                  {market.resolution.notes}
+                </p>
+              )}
+
+              {market.resolution.evidenceUrl && (
+                <a
+                  href={market.resolution.evidenceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-4 inline-block font-mono text-[10px] uppercase tracking-[0.14em] text-accent underline underline-offset-4"
+                >
+                  View evidence ↗
+                </a>
+              )}
+            </section>
+          )}
+
+          {market.status === "VOID" && (
+            <section className="border border-line-strong bg-surface p-5 sm:p-7">
+              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted">
+                Voided
+              </p>
+              <p className="mt-3 font-display text-2xl font-semibold tracking-[-0.02em]">
+                This market was voided.
+              </p>
+              <p className="mt-2 text-sm leading-6 text-muted">
+                Every stake was returned to its trader. No side was paid out.
+              </p>
+            </section>
+          )}
+
+          <section>
+            <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-ink pb-3">
+              <h2 className="font-display text-2xl font-semibold tracking-[-0.02em]">
+                Resolution rules
+              </h2>
+              <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted">
+                Published before open
+              </span>
             </div>
 
-            <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
-              <span>{pool.yes.toLocaleString()} cr on YES</span>
-              <span>{pool.total.toLocaleString()} cr total pool</span>
-              <span>{pool.no.toLocaleString()} cr on NO</span>
-            </div>
-          </div>
-        </section>
+            <p className="mt-5 whitespace-pre-line text-sm leading-7 text-ink/75">
+              {market.rules ??
+                "No resolution rules were provided for this market."}
+            </p>
+          </section>
 
-        <section className="h-fit rounded-2xl border border-slate-800 bg-slate-900 p-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-semibold">Take a position</h2>
+          <dl className="grid grid-cols-1 gap-px border border-line bg-line sm:grid-cols-3">
+            <div className="bg-surface p-4">
+              <dt className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
+                Category
+              </dt>
+              <dd className="mt-1.5 text-sm text-ink">{market.category}</dd>
+            </div>
+            <div className="bg-surface p-4">
+              <dt className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
+                Closes
+              </dt>
+              <dd className="mt-1.5 text-sm text-ink">
+                {formatDate(market.closesAt)}
+              </dd>
+            </div>
+            <div className="bg-surface p-4">
+              <dt className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
+                Settlement
+              </dt>
+              <dd className="mt-1.5 text-sm text-ink">
+                {market.status === "RESOLVED" && market.resolution
+                  ? market.resolution.outcome
+                  : market.status === "VOID"
+                    ? "Refunded"
+                    : "Pending"}
+              </dd>
+            </div>
+          </dl>
+        </div>
+
+        <aside className="border border-ink bg-surface lg:sticky lg:top-24">
+          <div className="flex items-center justify-between gap-4 border-b border-line px-5 py-4">
+            <h2 className="font-display text-lg font-semibold tracking-[-0.01em]">
+              Take a position
+            </h2>
             {walletBalance !== null && (
-              <span className="text-xs text-slate-500">
-                Balance {walletBalance.toLocaleString()} cr
+              <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
+                Bal {formatCredits(walletBalance)} cr
               </span>
             )}
           </div>
 
-          {sessionStatus === "unauthenticated" ? (
-            <div className="mt-5">
-              <p className="text-sm text-slate-400">
-                Sign in to place a bet with virtual credits.
-              </p>
-              <Link
-                href="/login"
-                className="mt-4 block rounded-lg bg-emerald-400 px-4 py-3 text-center text-sm font-semibold text-slate-950 transition hover:bg-emerald-300"
-              >
-                Sign in
-              </Link>
-            </div>
-          ) : !canTrade ? (
-            <p className="mt-5 rounded-lg border border-slate-700 bg-slate-950 p-4 text-sm text-slate-400">
-              {market.status !== "OPEN" || isPastClose
-                ? "Trading is closed for this market."
-                : "Checking your session…"}
-            </p>
-          ) : (
-            <>
-              <div className="mt-5 grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setOutcome("YES")}
-                  className={`rounded-lg border px-4 py-3 text-sm font-semibold transition ${
-                    outcome === "YES"
-                      ? "border-emerald-400 bg-emerald-400 text-slate-950"
-                      : "border-slate-700 bg-slate-950 text-emerald-300 hover:border-emerald-400/50"
-                  }`}
+          <div className="p-5">
+            {viewStatus === "unauthenticated" ? (
+              <div>
+                <p className="text-sm leading-6 text-muted">
+                  Sign in to take a side with virtual credits.
+                </p>
+                <Link
+                  href="/login"
+                  className="mt-5 flex items-center justify-center bg-ink px-4 py-3 font-mono text-[10px] uppercase tracking-[0.14em] text-paper transition-colors hover:bg-ink/85"
                 >
-                  YES
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setOutcome("NO")}
-                  className={`rounded-lg border px-4 py-3 text-sm font-semibold transition ${
-                    outcome === "NO"
-                      ? "border-rose-400 bg-rose-400 text-slate-950"
-                      : "border-slate-700 bg-slate-950 text-rose-300 hover:border-rose-400/50"
-                  }`}
-                >
-                  NO
-                </button>
+                  Sign in to trade
+                </Link>
+                <p className="mt-3 text-center font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
+                  1,000 credits on signup
+                </p>
               </div>
-
-              <label
-                htmlFor="amount"
-                className="mt-5 block text-sm font-medium text-slate-300"
-              >
-                Credits to stake
-              </label>
-              <input
-                id="amount"
-                type="number"
-                min={1}
-                step={1}
-                value={amount}
-                onChange={(event) => setAmount(event.target.value)}
-                placeholder="100"
-                className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none transition placeholder:text-slate-600 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20"
-              />
-
-              <div className="mt-2 flex gap-2">
-                {[10, 50, 100].map((value) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setAmount(String(value))}
-                    className="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-300 transition hover:bg-slate-800"
-                  >
-                    {value}
-                  </button>
-                ))}
-                {walletBalance !== null && walletBalance > 0 && (
+            ) : !canTrade ? (
+              <div className="border border-line bg-paper p-4">
+                <p className="text-sm leading-6 text-ink">
+                  {market.status === "RESOLVED" && market.resolution
+                    ? `Trading is closed. This market resolved ${market.resolution.outcome}.`
+                    : market.status === "VOID"
+                      ? "Trading is closed. All stakes were refunded."
+                      : "Trading is closed for this market."}
+                </p>
+                <Link
+                  href="/portfolio"
+                  className="mt-3 inline-block font-mono text-[10px] uppercase tracking-[0.12em] text-muted underline underline-offset-4 hover:text-ink"
+                >
+                  View your portfolio
+                </Link>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => setAmount(String(walletBalance))}
-                    className="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-300 transition hover:bg-slate-800"
+                    aria-pressed={outcome === "YES"}
+                    onClick={() => setOutcome("YES")}
+                    className={`border px-4 py-3 text-left transition-colors ${
+                      outcome === "YES"
+                        ? "border-yes bg-yes text-white"
+                        : "border-line bg-paper text-yes hover:border-yes/50"
+                    }`}
                   >
-                    Max
+                    <span className="block font-mono text-[10px] uppercase tracking-[0.14em] opacity-80">
+                      Buy yes
+                    </span>
+                    <span className="mt-1 block font-display text-2xl font-semibold leading-none">
+                      {hasPool ? formatCents(pool.yesPercentage) : "—"}
+                    </span>
                   </button>
-                )}
-              </div>
 
-              {estimatedPayout !== null && (
-                <p className="mt-4 rounded-lg border border-slate-800 bg-slate-950 p-3 text-xs leading-5 text-slate-400">
-                  Estimated payout if {outcome} wins:{" "}
-                  <span className="font-semibold text-slate-200">
-                    {estimatedPayout.toLocaleString()} cr
+                  <button
+                    type="button"
+                    aria-pressed={outcome === "NO"}
+                    onClick={() => setOutcome("NO")}
+                    className={`border px-4 py-3 text-left transition-colors ${
+                      outcome === "NO"
+                        ? "border-no bg-no text-white"
+                        : "border-line bg-paper text-no hover:border-no/50"
+                    }`}
+                  >
+                    <span className="block font-mono text-[10px] uppercase tracking-[0.14em] opacity-80">
+                      Buy no
+                    </span>
+                    <span className="mt-1 block font-display text-2xl font-semibold leading-none">
+                      {hasPool ? formatCents(pool.noPercentage) : "—"}
+                    </span>
+                  </button>
+                </div>
+
+                <label
+                  htmlFor="amount"
+                  className="mt-5 block font-mono text-[10px] uppercase tracking-[0.14em] text-muted"
+                >
+                  Credits to stake
+                </label>
+
+                <div className="relative mt-2">
+                  <input
+                    id="amount"
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={amount}
+                    onChange={(event) => setAmount(event.target.value)}
+                    placeholder="100"
+                    className="h-12 w-full border border-line bg-paper px-4 pr-12 text-sm text-ink outline-none transition-colors placeholder:text-muted/60 focus:border-ink"
+                  />
+                  <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
+                    cr
                   </span>
-                  . Pooled payout is final only after the market closes.
-                </p>
-              )}
+                </div>
 
-              {formError && (
-                <p
-                  role="alert"
-                  className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300"
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {[10, 50, 100].map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setAmount(String(value))}
+                      className="border border-line px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-muted transition-colors hover:border-ink hover:text-ink"
+                    >
+                      {value}
+                    </button>
+                  ))}
+                  {walletBalance !== null && walletBalance > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setAmount(String(walletBalance))}
+                      className="border border-line px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-muted transition-colors hover:border-ink hover:text-ink"
+                    >
+                      Max
+                    </button>
+                  )}
+                </div>
+
+                <div className="mt-5 flex items-center justify-between border-t border-line pt-4">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted">
+                    Est. payout if {outcome} wins
+                  </span>
+                  <span className="font-mono text-sm font-medium text-ink">
+                    {estimatedPayout !== null
+                      ? `${formatCredits(estimatedPayout)} cr`
+                      : "—"}
+                  </span>
+                </div>
+
+                {formError && (
+                  <p
+                    role="alert"
+                    className="mt-4 border border-no/30 bg-no-soft p-3 text-sm text-no"
+                  >
+                    {formError}
+                  </p>
+                )}
+
+                {successMessage && (
+                  <p className="mt-4 border border-yes/30 bg-yes-soft p-3 text-sm text-yes">
+                    {successMessage}
+                  </p>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleBet}
+                  disabled={submitting || !validAmount}
+                  className={`mt-4 w-full px-4 py-3 font-mono text-[10px] uppercase tracking-[0.14em] transition-opacity disabled:cursor-not-allowed disabled:opacity-40 ${
+                    outcome === "YES"
+                      ? "bg-yes text-white hover:opacity-90"
+                      : "bg-no text-white hover:opacity-90"
+                  }`}
                 >
-                  {formError}
-                </p>
-              )}
+                  {submitting
+                    ? "Placing bet…"
+                    : validAmount
+                      ? `Bet ${formatCredits(numericAmount)} cr on ${outcome}`
+                      : `Bet on ${outcome}`}
+                </button>
 
-              {successMessage && (
-                <p className="mt-4 rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-3 text-sm text-emerald-300">
-                  {successMessage}
+                <p className="mt-3 font-mono text-[9px] uppercase leading-4 tracking-[0.1em] text-muted">
+                  Pooled payout. Prices are set by stake, not an order book.
                 </p>
-              )}
+              </>
+            )}
+          </div>
 
-              <button
-                type="button"
-                onClick={handleBet}
-                disabled={submitting || !validAmount}
-                className={`mt-4 w-full rounded-lg px-4 py-3 text-sm font-semibold text-slate-950 transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                  outcome === "YES"
-                    ? "bg-emerald-400 hover:bg-emerald-300"
-                    : "bg-rose-400 hover:bg-rose-300"
-                }`}
-              >
-                {submitting
-                  ? "Placing bet…"
-                  : validAmount
-                    ? `Bet ${numericAmount.toLocaleString()} cr on ${outcome}`
-                    : `Bet on ${outcome}`}
-              </button>
-            </>
+          {hasPool && market.status === "OPEN" && (
+            <div className="border-t border-line px-5 py-4">
+              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted">
+                Payout math
+              </p>
+
+              <dl className="mt-3 space-y-2 font-mono text-[11px]">
+                <div className="flex items-baseline justify-between gap-3">
+                  <dt className={outcome === "YES" ? "text-yes" : "text-muted"}>
+                    1 cr on yes
+                  </dt>
+                  <dd className="text-ink">
+                    {yesMultiplier
+                      ? `≈ ${yesMultiplier} cr if yes wins`
+                      : "No pool yet"}
+                  </dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-3">
+                  <dt className={outcome === "NO" ? "text-no" : "text-muted"}>
+                    1 cr on no
+                  </dt>
+                  <dd className="text-ink">
+                    {noMultiplier
+                      ? `≈ ${noMultiplier} cr if no wins`
+                      : "No pool yet"}
+                  </dd>
+                </div>
+              </dl>
+
+              <p className="mt-3 text-[11px] leading-5 text-muted">
+                Your return shrinks as more credits join the side you back.
+                Figures assume today&apos;s pools.
+              </p>
+            </div>
           )}
-        </section>
+        </aside>
       </div>
     </main>
   );
