@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { ProbabilityBar, StatusPill } from "@/components/market-ui";
+import { MarketDiscussion } from "@/components/market-discussion";
 import { ProbabilityChart } from "@/components/probability-chart";
 import type { HistoryPoint } from "@/lib/market-history";
 import {
@@ -484,6 +485,10 @@ function MarketPageContent() {
               </dd>
             </div>
           </dl>
+
+          <div className="mt-12">
+            <MarketDiscussion slug={market.slug} />
+          </div>
         </div>
 
         <aside className="border border-ink bg-surface lg:sticky lg:top-24">
