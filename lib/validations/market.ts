@@ -1,11 +1,18 @@
 import { z } from "zod";
 import { MarketStatus, Outcome } from "@/app/generated/prisma/enums";
 
+export const marketSortSchema = z
+  .enum(["newest", "closing", "volume", "movers"])
+  .default("newest");
+
 export const marketQuerySchema = z.object({
   status: z.enum(MarketStatus).optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().min(1).max(50).default(10),
   category: z.string().trim().min(2).max(100).optional(),
+  q: z.string().trim().min(1).max(100).optional(),
+  watching: z.boolean().default(false),
+  sort: marketSortSchema,
 });
 
 const slugRegex = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;

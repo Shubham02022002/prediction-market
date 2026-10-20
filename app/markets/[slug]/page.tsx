@@ -5,6 +5,8 @@ import { useParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { ProbabilityBar, StatusPill } from "@/components/market-ui";
+import { ProbabilityChart } from "@/components/probability-chart";
+import type { HistoryPoint } from "@/lib/market-history";
 import {
   formatCents,
   formatCredits,
@@ -21,6 +23,7 @@ type MarketDetail = {
   status: string;
   closesAt: string;
   createdAt: string;
+  watched?: boolean;
   resolution: {
     outcome: "YES" | "NO";
     notes: string | null;
@@ -68,6 +71,7 @@ function MarketPageContent() {
 
   const [market, setMarket] = useState<MarketDetail | null>(null);
   const [pool, setPool] = useState<Pool | null>(null);
+  const [history, setHistory] = useState<HistoryPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
@@ -77,6 +81,8 @@ function MarketPageContent() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [watched, setWatched] = useState(false);
+  const [watchPending, setWatchPending] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -85,7 +91,10 @@ function MarketPageContent() {
 
   const loadMarket = useCallback(async () => {
     try {
-      const response = await fetch(`/api/markets/${slug}`);
+      const [response, historyResponse] = await Promise.all([
+        fetch(`/api/markets/${slug}`),
+        fetch(`/api/markets/${slug}/history`).catch(() => null),
+      ]);
       const data = await response.json();
 
       if (!response.ok) {
@@ -94,6 +103,16 @@ function MarketPageContent() {
 
       setMarket(data.market);
       setPool(data.pool);
+      setWatched(Boolean(data.market.watched));
+
+      if (historyResponse?.ok) {
+        const historyData = await historyResponse.json().catch(() => null);
+        setHistory(
+          Array.isArray(historyData?.history) ? historyData.history : [],
+        );
+      } else {
+        setHistory([]);
+      }
     } catch (error) {
       setLoadError(
         error instanceof Error ? error.message : "Unable to load market.",
@@ -179,6 +198,30 @@ function MarketPageContent() {
   const yesMultiplier = pool.yes > 0 ? (pool.total / pool.yes).toFixed(1) : null;
   const noMultiplier = pool.no > 0 ? (pool.total / pool.no).toFixed(1) : null;
 
+  async function handleToggleWatch() {
+    if (watchPending) {
+      return;
+    }
+
+    const nextWatched = !watched;
+    setWatched(nextWatched);
+    setWatchPending(true);
+
+    try {
+      const response = await fetch(`/api/watchlist/${market!.slug}`, {
+        method: nextWatched ? "POST" : "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("Unable to update watchlist.");
+      }
+    } catch {
+      setWatched(!nextWatched);
+    } finally {
+      setWatchPending(false);
+    }
+  }
+
   async function handleBet() {
     setFormError("");
     setSuccessMessage("");
@@ -245,6 +288,31 @@ function MarketPageContent() {
         <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
           Closes {formatDate(market.closesAt)}
         </span>
+        {viewStatus === "authenticated" && (
+          <button
+            type="button"
+            onClick={handleToggleWatch}
+            disabled={watchPending}
+            aria-pressed={watched}
+            className={`ml-auto flex items-center gap-1.5 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors disabled:opacity-50 ${
+              watched
+                ? "border-ink bg-ink text-paper"
+                : "border-line text-muted hover:border-ink hover:text-ink"
+            }`}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="h-3.5 w-3.5"
+              fill={watched ? "currentColor" : "none"}
+              stroke="currentColor"
+              strokeWidth="1.5"
+              aria-hidden="true"
+            >
+              <path d="M6 4h12v17l-6-4-6 4V4z" strokeLinejoin="round" />
+            </svg>
+            {watched ? "Watching" : "Watch"}
+          </button>
+        )}
       </div>
 
       <h1 className="mt-5 max-w-4xl text-balance font-display text-4xl font-semibold leading-[1.02] tracking-[-0.035em] sm:text-5xl">
@@ -296,6 +364,8 @@ function MarketPageContent() {
                 </p>
               </div>
             </div>
+
+            {history.length >= 2 && <ProbabilityChart points={history} />}
 
             <div className="border-t border-line px-5 py-5 sm:px-7">
               {hasPool ? (

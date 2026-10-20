@@ -49,6 +49,7 @@ model User {
 
   wallet        Wallet?
   bets          Bet[]
+  watchlist     Watchlist[]
   ledgerEntries LedgerEntry[]
   resolutions   MarketResolution[] @relation("AdminResolutions")
   auditEvents   AuditEvent[]
@@ -75,9 +76,23 @@ model Market {
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
   bets        Bet[]
+  watchlist   Watchlist[]
   resolution  MarketResolution?
   ledgers     LedgerEntry[]
   auditEvents AuditEvent[]
+}
+
+model Watchlist {
+  id        String   @id @default(uuid())
+  userId    String
+  marketId  String
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  market Market @relation(fields: [marketId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, marketId])
+  @@index([userId])
 }
 
 model Bet {

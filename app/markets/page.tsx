@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import { MarketRow, type MarketSummary } from "@/components/market-row";
 import { formatCredits } from "@/lib/format";
@@ -20,13 +21,42 @@ const STATUS_OPTIONS = [
   { value: "VOID", label: "Void" },
 ];
 
+const SORT_OPTIONS = [
+  { value: "newest", label: "Newest first" },
+  { value: "closing", label: "Closing soon" },
+  { value: "volume", label: "Highest volume" },
+  { value: "movers", label: "Biggest movers" },
+];
+
 export default function MarketsPage() {
+  const { status: sessionStatus } = useSession();
   const [markets, setMarkets] = useState<MarketSummary[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [statusFilter, setStatusFilter] = useState("");
+  const [category, setCategory] = useState("");
+  const [watchingOnly, setWatchingOnly] = useState(false);
+  const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [sort, setSort] = useState("newest");
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const nextQuery = query.trim();
+
+    if (nextQuery === debouncedQuery) {
+      return;
+    }
+
+    const handle = setTimeout(() => {
+      setDebouncedQuery(nextQuery);
+      setPage(1);
+    }, 300);
+
+    return () => clearTimeout(handle);
+  }, [query, debouncedQuery]);
 
   useEffect(() => {
     let cancelled = false;
@@ -39,10 +69,23 @@ export default function MarketsPage() {
         const params = new URLSearchParams({
           page: String(page),
           limit: "12",
+          sort,
         });
 
         if (statusFilter) {
           params.set("status", statusFilter);
+        }
+
+        if (category) {
+          params.set("category", category);
+        }
+
+        if (debouncedQuery) {
+          params.set("q", debouncedQuery);
+        }
+
+        if (watchingOnly) {
+          params.set("watching", "true");
         }
 
         const response = await fetch(`/api/markets?${params.toString()}`);
@@ -55,6 +98,10 @@ export default function MarketsPage() {
         if (!cancelled) {
           setMarkets(data.markets);
           setPagination(data.pagination);
+
+          if (Array.isArray(data.categories)) {
+            setCategories(data.categories);
+          }
         }
       } catch (loadError) {
         if (!cancelled) {
@@ -76,7 +123,38 @@ export default function MarketsPage() {
     return () => {
       cancelled = true;
     };
-  }, [page, statusFilter]);
+  }, [page, statusFilter, category, debouncedQuery, sort, watchingOnly]);
+
+  const hasFilters = Boolean(
+    statusFilter || category || debouncedQuery || watchingOnly,
+  );
+
+  async function handleToggleWatch(market: MarketSummary) {
+    const nextWatched = !market.watched;
+
+    setMarkets((current) =>
+      current.map((entry) =>
+        entry.id === market.id ? { ...entry, watched: nextWatched } : entry,
+      ),
+    );
+
+    try {
+      const response = await fetch(`/api/watchlist/${market.slug}`, {
+        method: nextWatched ? "POST" : "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("Unable to update watchlist.");
+      }
+    } catch {
+      setMarkets((current) =>
+        current.map((entry) =>
+          entry.id === market.id ? { ...entry, watched: !nextWatched } : entry,
+        ),
+      );
+      setError("Could not update your watchlist. Please try again.");
+    }
+  }
 
   return (
     <main>
@@ -115,35 +193,144 @@ export default function MarketsPage() {
       </section>
 
       <section className="mx-auto w-full max-w-7xl px-4 sm:px-6">
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-line py-4">
-          <div className="flex flex-wrap gap-1">
-            {STATUS_OPTIONS.map((option) => {
-              const isActive = statusFilter === option.value;
+        <div className="border-b border-line py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap gap-1">
+              {STATUS_OPTIONS.map((option) => {
+                const isActive = statusFilter === option.value;
 
-              return (
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    aria-pressed={isActive}
+                    onClick={() => {
+                      setStatusFilter(option.value);
+                      setPage(1);
+                    }}
+                    className={`px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors ${
+                      isActive
+                        ? "bg-ink text-paper"
+                        : "text-muted hover:bg-surface hover:text-ink"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+              {sessionStatus === "authenticated" && (
                 <button
-                  key={option.value}
                   type="button"
-                  aria-pressed={isActive}
+                  aria-pressed={watchingOnly}
                   onClick={() => {
-                    setStatusFilter(option.value);
+                    setWatchingOnly((current) => !current);
                     setPage(1);
                   }}
-                  className={`px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors ${
-                    isActive
-                      ? "bg-ink text-paper"
-                      : "text-muted hover:bg-surface hover:text-ink"
+                  className={`ml-2 flex items-center gap-1.5 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors ${
+                    watchingOnly
+                      ? "border-ink bg-ink text-paper"
+                      : "border-line text-muted hover:border-ink hover:text-ink"
                   }`}
                 >
-                  {option.label}
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-3 w-3"
+                    fill={watchingOnly ? "currentColor" : "none"}
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    aria-hidden="true"
+                  >
+                    <path d="M6 4h12v17l-6-4-6 4V4z" strokeLinejoin="round" />
+                  </svg>
+                  Watching
                 </button>
-              );
-            })}
+              )}
+            </div>
+
+            <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted">
+              {pagination
+                ? `${formatCredits(pagination.totalMarkets)} ${pagination.totalMarkets === 1 ? "market" : "markets"}`
+                : "—"}
+            </p>
           </div>
 
-          <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted">
-            Newest first
-          </p>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="sm:w-72">
+              <label htmlFor="market-search" className="sr-only">
+                Search markets
+              </label>
+              <input
+                id="market-search"
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search questions and categories"
+                className="h-10 w-full border border-line bg-surface px-3 font-mono text-[11px] text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-ink"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="market-sort" className="sr-only">
+                Sort markets
+              </label>
+              <select
+                id="market-sort"
+                value={sort}
+                onChange={(event) => {
+                  setSort(event.target.value);
+                  setPage(1);
+                }}
+                className="h-10 border border-line bg-surface px-2.5 font-mono text-[10px] uppercase tracking-[0.1em] text-ink outline-none transition-colors focus:border-ink"
+              >
+                {SORT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {categories.length > 1 && (
+            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+              <span className="mr-1 font-mono text-[9px] uppercase tracking-[0.14em] text-muted">
+                Category
+              </span>
+              <button
+                type="button"
+                aria-pressed={category === ""}
+                onClick={() => {
+                  setCategory("");
+                  setPage(1);
+                }}
+                className={`border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.1em] transition-colors ${
+                  category === ""
+                    ? "border-ink bg-ink text-paper"
+                    : "border-line text-muted hover:border-ink hover:text-ink"
+                }`}
+              >
+                All
+              </button>
+              {categories.map((entry) => (
+                <button
+                  key={entry}
+                  type="button"
+                  aria-pressed={category === entry}
+                  onClick={() => {
+                    setCategory(entry);
+                    setPage(1);
+                  }}
+                  className={`border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.1em] transition-colors ${
+                    category === entry
+                      ? "border-ink bg-ink text-paper"
+                      : "border-line text-muted hover:border-ink hover:text-ink"
+                  }`}
+                >
+                  {entry}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {error && (
@@ -175,26 +362,44 @@ export default function MarketsPage() {
         ) : markets.length === 0 ? (
           <div className="border-b border-line py-16">
             <p className="font-display text-2xl font-medium tracking-[-0.02em]">
-              Nothing on the board here.
+              {hasFilters
+                ? "No markets match these filters."
+                : "Nothing on the board here."}
             </p>
             <p className="mt-2 max-w-md text-sm leading-6 text-muted">
-              Try a different status, or head back to the full board.
+              {hasFilters
+                ? "Try a different search, category, or status."
+                : "New questions are listed regularly. Check back soon."}
             </p>
-            <button
-              type="button"
-              onClick={() => {
-                setStatusFilter("");
-                setPage(1);
-              }}
-              className="mt-6 border border-line-strong px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors hover:border-ink"
-            >
-              Show all markets
-            </button>
+            {hasFilters && (
+              <button
+                type="button"
+                onClick={() => {
+                  setStatusFilter("");
+                  setCategory("");
+                  setWatchingOnly(false);
+                  setQuery("");
+                  setDebouncedQuery("");
+                  setPage(1);
+                }}
+                className="mt-6 border border-line-strong px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors hover:border-ink"
+              >
+                Clear filters
+              </button>
+            )}
           </div>
         ) : (
           <div>
             {markets.map((market) => (
-              <MarketRow key={market.id} market={market} />
+              <MarketRow
+                key={market.id}
+                market={market}
+                onToggleWatch={
+                  sessionStatus === "authenticated"
+                    ? handleToggleWatch
+                    : undefined
+                }
+              />
             ))}
           </div>
         )}

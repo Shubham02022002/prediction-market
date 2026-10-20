@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ProbabilityBar, StatusPill } from "@/components/market-ui";
+import { ProbabilitySparkline } from "@/components/probability-chart";
 import { formatCents, formatCredits, formatDate } from "@/lib/format";
 
 export type MarketSummary = {
@@ -17,16 +18,25 @@ export type MarketSummary = {
     yesPercentage: number;
     noPercentage: number;
   };
+  spark?: number[];
+  watched?: boolean;
 };
 
-export function MarketRow({ market }: { market: MarketSummary }) {
+export function MarketRow({
+  market,
+  onToggleWatch,
+}: {
+  market: MarketSummary;
+  onToggleWatch?: (market: MarketSummary) => void;
+}) {
   const hasPool = market.pool.total > 0;
 
   return (
-    <Link
-      href={`/markets/${market.slug}`}
-      className="group grid gap-5 border-b border-line py-6 transition-colors sm:grid-cols-[minmax(0,1fr)_168px_124px] sm:items-center"
-    >
+    <div className="group relative border-b border-line">
+      <Link
+        href={`/markets/${market.slug}`}
+        className="grid gap-5 py-6 pr-10 transition-colors sm:grid-cols-[minmax(0,1fr)_168px_124px] sm:items-center sm:pr-12"
+      >
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2.5">
           <StatusPill status={market.status} />
@@ -65,7 +75,9 @@ export function MarketRow({ market }: { market: MarketSummary }) {
           Yes {hasPool ? formatCents(market.pool.yesPercentage) : ""}
         </p>
         <div className="mt-2.5 hidden sm:block">
-          {hasPool ? (
+          {market.spark && market.spark.length >= 2 ? (
+            <ProbabilitySparkline points={market.spark} className="h-8 w-full" />
+          ) : hasPool ? (
             <ProbabilityBar yes={market.pool.yesPercentage} />
           ) : (
             <div className="h-1.5 w-full bg-line" aria-hidden="true" />
@@ -84,6 +96,35 @@ export function MarketRow({ market }: { market: MarketSummary }) {
           Closes {formatDate(market.closesAt)}
         </p>
       </div>
-    </Link>
+      </Link>
+
+      {onToggleWatch && (
+        <button
+          type="button"
+          onClick={() => onToggleWatch(market)}
+          aria-pressed={Boolean(market.watched)}
+          aria-label={
+            market.watched ? "Remove from watchlist" : "Add to watchlist"
+          }
+          title={market.watched ? "Remove from watchlist" : "Add to watchlist"}
+          className={`absolute right-0 top-5 flex h-8 w-8 items-center justify-center border transition-colors ${
+            market.watched
+              ? "border-ink bg-ink text-paper"
+              : "border-line bg-surface text-muted hover:border-ink hover:text-ink"
+          }`}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className="h-4 w-4"
+            fill={market.watched ? "currentColor" : "none"}
+            stroke="currentColor"
+            strokeWidth="1.5"
+            aria-hidden="true"
+          >
+            <path d="M6 4h12v17l-6-4-6 4V4z" strokeLinejoin="round" />
+          </svg>
+        </button>
+      )}
+    </div>
   );
 }

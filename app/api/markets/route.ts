@@ -1,10 +1,15 @@
 import prisma from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@/app/generated/prisma/client";
+import { auth } from "@/auth";
 import { requireAdmin } from "@/lib/auth/authorization";
+import { sampleHistory } from "@/lib/market-history";
 import {
   marketQuerySchema,
   marketCreationSchema,
 } from "@/lib/validations/market";
+
+const MOVER_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,6 +19,9 @@ export async function GET(request: NextRequest) {
       page: searchParams.get("page") ?? undefined,
       limit: searchParams.get("limit") ?? undefined,
       category: searchParams.get("category") ?? undefined,
+      q: searchParams.get("q") ?? undefined,
+      watching: searchParams.get("watching") === "true",
+      sort: searchParams.get("sort") ?? undefined,
     });
 
     if (!result.success) {
@@ -25,17 +33,37 @@ export async function GET(request: NextRequest) {
         { status: 400 },
       );
     }
-    const { status, category, page, limit } = result.data;
-    const where = {
-      status: status && status !== "DRAFT" ? status : { not: "DRAFT" as const },
+    const { status, category, q, watching, sort, page, limit } = result.data;
+
+    const session = await auth();
+    const userId = session?.user?.id;
+
+    if (watching && !userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const where: Prisma.MarketWhereInput = {
+      status:
+        status && status !== "DRAFT" ? status : { not: "DRAFT" },
       category,
     };
-    const [markets, totalMarkets] = await Promise.all([
+
+    if (q) {
+      where.OR = [
+        { question: { contains: q, mode: "insensitive" } },
+        { description: { contains: q, mode: "insensitive" } },
+        { category: { contains: q, mode: "insensitive" } },
+      ];
+    }
+
+    if (watching && userId) {
+      where.watchlist = { some: { userId } };
+    }
+
+    const [matchingMarkets, categoryRows] = await Promise.all([
       prisma.market.findMany({
         where,
         orderBy: { createdAt: "desc" },
-        skip: (page - 1) * limit,
-        take: limit,
         select: {
           id: true,
           slug: true,
@@ -46,34 +74,90 @@ export async function GET(request: NextRequest) {
           createdAt: true,
         },
       }),
-      prisma.market.count({ where }),
+      prisma.market.findMany({
+        where: { status: { not: "DRAFT" } },
+        distinct: ["category"],
+        orderBy: { category: "asc" },
+        select: { category: true },
+      }),
     ]);
-    const totalPages = Math.ceil(totalMarkets / limit);
 
-    const marketIds = markets.map((market) => market.id);
-    const pools = marketIds.length
-      ? await prisma.bet.groupBy({
-          by: ["marketId", "outcome"],
+    const marketIds = matchingMarkets.map((market) => market.id);
+    const marketBets = marketIds.length
+      ? await prisma.bet.findMany({
           where: { marketId: { in: marketIds } },
-          _sum: { amount: true },
+          orderBy: { createdAt: "asc" },
+          select: {
+            marketId: true,
+            outcome: true,
+            amount: true,
+            createdAt: true,
+          },
         })
       : [];
 
-    const poolByMarket = new Map<string, { yes: number; no: number }>();
+    const watchedIds = new Set<string>();
 
-    for (const row of pools) {
-      const entry = poolByMarket.get(row.marketId) ?? { yes: 0, no: 0 };
-      if (row.outcome === "YES") {
-        entry.yes = row._sum.amount ?? 0;
-      } else {
-        entry.no = row._sum.amount ?? 0;
+    if (userId && marketIds.length) {
+      const watches = await prisma.watchlist.findMany({
+        where: { userId, marketId: { in: marketIds } },
+        select: { marketId: true },
+      });
+
+      for (const watch of watches) {
+        watchedIds.add(watch.marketId);
       }
-      poolByMarket.set(row.marketId, entry);
     }
 
-    const marketsWithPools = markets.map((market) => {
-      const { yes, no } = poolByMarket.get(market.id) ?? { yes: 0, no: 0 };
+    const cutoff = Date.now() - MOVER_WINDOW_MS;
+    const poolByMarket = new Map<
+      string,
+      {
+        yes: number;
+        no: number;
+        spark: number[];
+        baseline: number | null;
+        latest: number | null;
+      }
+    >();
+
+    for (const bet of marketBets) {
+      const entry = poolByMarket.get(bet.marketId) ?? {
+        yes: 0,
+        no: 0,
+        spark: [],
+        baseline: null,
+        latest: null,
+      };
+
+      if (bet.outcome === "YES") {
+        entry.yes += bet.amount;
+      } else {
+        entry.no += bet.amount;
+      }
+
+      const total = entry.yes + entry.no;
+      const percentage = (entry.yes / total) * 100;
+
+      if (entry.baseline === null || bet.createdAt.getTime() <= cutoff) {
+        entry.baseline = percentage;
+      }
+      entry.latest = percentage;
+      entry.spark.push(percentage);
+      poolByMarket.set(bet.marketId, entry);
+    }
+
+    const enriched = matchingMarkets.map((market) => {
+      const entry = poolByMarket.get(market.id);
+      const yes = entry?.yes ?? 0;
+      const no = entry?.no ?? 0;
       const total = yes + no;
+      const spark =
+        entry && entry.spark.length >= 2 ? sampleHistory(entry.spark, 24) : [];
+      const movement =
+        entry?.baseline != null && entry.latest != null
+          ? Math.abs(entry.latest - entry.baseline)
+          : 0;
 
       return {
         ...market,
@@ -84,14 +168,39 @@ export async function GET(request: NextRequest) {
           yesPercentage: total === 0 ? 0 : (yes / total) * 100,
           noPercentage: total === 0 ? 0 : (no / total) * 100,
         },
+        spark,
+        movement,
+        watched: watchedIds.has(market.id),
       };
     });
+
+    enriched.sort((a, b) => {
+      switch (sort) {
+        case "volume":
+          return b.pool.total - a.pool.total;
+        case "closing":
+          return a.closesAt.getTime() - b.closesAt.getTime();
+        case "movers":
+          return b.movement - a.movement || b.pool.total - a.pool.total;
+        default:
+          return b.createdAt.getTime() - a.createdAt.getTime();
+      }
+    });
+
+    const totalMarkets = enriched.length;
+    const totalPages = Math.ceil(totalMarkets / limit);
+    const safePage = Math.min(page, Math.max(1, totalPages));
+    const marketsWithPools = enriched.slice(
+      (safePage - 1) * limit,
+      safePage * limit,
+    );
 
     return NextResponse.json(
       {
         markets: marketsWithPools,
+        categories: categoryRows.map((row) => row.category),
         pagination: {
-          page,
+          page: safePage,
           limit,
           totalMarkets,
           totalPages,

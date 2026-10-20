@@ -1,3 +1,4 @@
+import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import { marketParamsSchema } from "@/lib/validations/market";
@@ -76,9 +77,25 @@ export async function GET(_request: Request, { params }: RouteContext) {
     const yesPercentage = totalPool === 0 ? 0 : (yesPool / totalPool) * 100;
     const noPercentage = totalPool === 0 ? 0 : (noPool / totalPool) * 100;
 
+    const session = await auth();
+    let watched = false;
+
+    if (session?.user?.id) {
+      const watch = await prisma.watchlist.findUnique({
+        where: {
+          userId_marketId: {
+            userId: session.user.id,
+            marketId: market.id,
+          },
+        },
+        select: { id: true },
+      });
+      watched = Boolean(watch);
+    }
+
     return NextResponse.json(
       {
-        market,
+        market: { ...market, watched },
         pool: {
           yes: yesPool,
           no: noPool,
