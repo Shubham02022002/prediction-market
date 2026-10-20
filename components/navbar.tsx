@@ -9,6 +9,7 @@ import { formatCredits } from "@/lib/format";
 
 const NAV_LINKS = [
   { href: "/markets", label: "Markets" },
+  { href: "/leaderboard", label: "Leaderboard" },
   { href: "/portfolio", label: "Portfolio" },
 ];
 
@@ -16,6 +17,7 @@ export default function Navbar() {
   const pathname = usePathname();
   const { data: session, status } = useSession();
   const [balance, setBalance] = useState<number | null>(null);
+  const [unread, setUnread] = useState(0);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -41,9 +43,31 @@ export default function Navbar() {
     }
   }, [status]);
 
+  const loadUnread = useCallback(async () => {
+    if (status !== "authenticated") {
+      setUnread(0);
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/notifications?count=true");
+      if (!response.ok) {
+        return;
+      }
+      const data = await response.json();
+      setUnread(data.unreadCount ?? 0);
+    } catch {
+      // Keep the last known count when the request fails.
+    }
+  }, [status]);
+
   useEffect(() => {
     loadBalance();
   }, [loadBalance, pathname]);
+
+  useEffect(() => {
+    loadUnread();
+  }, [loadUnread, pathname]);
 
   useEffect(() => {
     const handleWalletUpdate = () => {
@@ -51,8 +75,12 @@ export default function Navbar() {
     };
 
     window.addEventListener("wallet:updated", handleWalletUpdate);
-    return () => window.removeEventListener("wallet:updated", handleWalletUpdate);
-  }, [loadBalance]);
+    window.addEventListener("notifications:updated", loadUnread);
+    return () => {
+      window.removeEventListener("wallet:updated", handleWalletUpdate);
+      window.removeEventListener("notifications:updated", loadUnread);
+    };
+  }, [loadBalance, loadUnread]);
 
   if (pathname === "/login" || pathname === "/register") {
     return null;
@@ -83,14 +111,68 @@ export default function Navbar() {
                 </Link>
               );
             })}
+
+            {session?.user.role === "ADMIN" && (
+              <Link
+                href="/admin"
+                aria-current={
+                  pathname.startsWith("/admin") ? "page" : undefined
+                }
+                className={`border-b-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em] transition-colors ${
+                  pathname.startsWith("/admin")
+                    ? "border-ink text-ink"
+                    : "border-transparent text-muted hover:border-line-strong hover:text-ink"
+                }`}
+              >
+                Admin
+              </Link>
+            )}
           </nav>
         </div>
 
         <div className="flex shrink-0 items-center gap-3 sm:gap-4">
           {!mounted || status === "loading" ? (
-            <span className="h-8 w-24 animate-pulse bg-line" aria-hidden="true" />
+            <span
+              className="h-8 w-24 animate-pulse bg-line"
+              aria-hidden="true"
+            />
           ) : status === "authenticated" ? (
             <>
+              <Link
+                href="/notifications"
+                aria-label={
+                  unread > 0
+                    ? `Notifications, ${unread} unread`
+                    : "Notifications"
+                }
+                className={`relative flex h-8 w-8 items-center justify-center border bg-surface transition-colors hover:text-ink ${
+                  pathname.startsWith("/notifications")
+                    ? "border-ink text-ink"
+                    : "border-line text-muted hover:border-line-strong"
+                }`}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M6 9a6 6 0 1 1 12 0c0 4 1.5 5.5 2 6H4c.5-.5 2-2 2-6Z"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path d="M10 19a2 2 0 0 0 4 0" strokeLinecap="round" />
+                </svg>
+                {unread > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center bg-accent px-1 font-mono text-[9px] leading-none text-paper">
+                    {unread > 99 ? "99+" : unread}
+                  </span>
+                )}
+              </Link>
+
               <span className="flex items-center gap-2 border border-line bg-surface px-2.5 py-1.5">
                 <span className="hidden font-mono text-[10px] uppercase tracking-[0.12em] text-muted sm:inline">
                   Bal

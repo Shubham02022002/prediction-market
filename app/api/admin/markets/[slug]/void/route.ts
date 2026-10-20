@@ -61,7 +61,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     const result = await prisma.$transaction(async (tx) => {
       const existing = await tx.market.findUnique({
         where: { slug },
-        select: { id: true, status: true },
+        select: { id: true, status: true, question: true },
       });
 
       if (!existing) {
@@ -126,6 +126,28 @@ export async function POST(request: Request, { params }: RouteContext) {
         await tx.wallet.updateMany({
           where: { userId },
           data: { balance: { increment: amount } },
+        });
+      }
+
+      const watchers = await tx.watchlist.findMany({
+        where: { marketId: existing.id },
+        select: { userId: true },
+      });
+
+      const recipientIds = new Set([
+        ...bets.map((bet) => bet.userId),
+        ...watchers.map((watch) => watch.userId),
+      ]);
+
+      if (recipientIds.size > 0) {
+        await tx.notification.createMany({
+          data: [...recipientIds].map((userId) => ({
+            userId,
+            marketId: existing.id,
+            type: "MARKET_VOIDED",
+            title: "Market voided — stakes refunded",
+            body: existing.question,
+          })),
         });
       }
 
