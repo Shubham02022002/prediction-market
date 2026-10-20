@@ -16,12 +16,21 @@ type Bet = {
   outcome: "YES" | "NO";
   amount: number;
   createdAt: string;
+  potentialPayout: number | null;
+  multiplier: number | null;
   market: {
     slug: string;
     question: string;
     status: string;
     closesAt: string;
   };
+};
+
+type Summary = {
+  realizedNet: number;
+  atStake: number;
+  potentialPayout: number;
+  openBets: number;
 };
 
 type LedgerEntry = {
@@ -47,6 +56,7 @@ export default function PortfolioPage() {
 
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [bets, setBets] = useState<Bet[]>([]);
+  const [summary, setSummary] = useState<Summary | null>(null);
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -91,6 +101,7 @@ export default function PortfolioPage() {
         if (!cancelled) {
           setWallet(walletData.wallet);
           setBets(betsData.bets);
+          setSummary(betsData.summary ?? null);
           setEntries(ledgerData.entries);
         }
       } catch (loadError) {
@@ -163,10 +174,7 @@ export default function PortfolioPage() {
     );
   }
 
-  const openPositions = bets.filter(
-    (bet) => bet.market.status === "OPEN",
-  ).length;
-  const totalStaked = bets.reduce((sum, bet) => sum + bet.amount, 0);
+  const openPositions = summary?.openBets ?? 0;
 
   return (
     <main>
@@ -186,12 +194,22 @@ export default function PortfolioPage() {
               </p>
             </div>
 
-            <Link
-              href="/markets"
-              className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-ink"
-            >
-              Browse markets <span aria-hidden="true">→</span>
-            </Link>
+            <div className="flex flex-wrap gap-x-6 gap-y-2">
+              {session?.user?.id && (
+                <Link
+                  href={`/traders/${session.user.id}`}
+                  className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-ink"
+                >
+                  Public profile <span aria-hidden="true">→</span>
+                </Link>
+              )}
+              <Link
+                href="/markets"
+                className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-ink"
+              >
+                Browse markets <span aria-hidden="true">→</span>
+              </Link>
+            </div>
           </div>
         </div>
       </section>
@@ -206,7 +224,7 @@ export default function PortfolioPage() {
           </div>
         )}
 
-        <dl className="mt-8 grid gap-px border border-line bg-line sm:grid-cols-3">
+        <dl className="mt-8 grid gap-px border border-line bg-line sm:grid-cols-2 lg:grid-cols-4">
           <div className="bg-surface p-5 sm:p-6">
             <dt className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
               Available credits
@@ -221,25 +239,52 @@ export default function PortfolioPage() {
 
           <div className="bg-surface p-5 sm:p-6">
             <dt className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
-              Open positions
+              Realized P&amp;L
             </dt>
-            <dd className="mt-2 font-display text-4xl font-semibold leading-none tracking-[-0.03em]">
-              {loading ? "—" : openPositions}
+            <dd
+              className={`mt-2 font-display text-4xl font-semibold leading-none tracking-[-0.03em] ${
+                !summary || summary.realizedNet === 0
+                  ? "text-ink"
+                  : summary.realizedNet > 0
+                    ? "text-yes"
+                    : "text-no"
+              }`}
+            >
+              {loading
+                ? "—"
+                : summary
+                  ? `${summary.realizedNet > 0 ? "+" : summary.realizedNet < 0 ? "−" : ""}${formatCredits(Math.abs(summary.realizedNet))}`
+                  : "—"}
             </dd>
             <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
-              Markets still trading
+              Settled markets
             </p>
           </div>
 
           <div className="bg-surface p-5 sm:p-6">
             <dt className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
-              Total staked
+              At stake
             </dt>
             <dd className="mt-2 font-display text-4xl font-semibold leading-none tracking-[-0.03em]">
-              {loading ? "—" : formatCredits(totalStaked)}
+              {loading || !summary ? "—" : formatCredits(summary.atStake)}
             </dd>
             <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
-              Across {bets.length} bets
+              Across {openPositions}{" "}
+              {openPositions === 1 ? "open position" : "open positions"}
+            </p>
+          </div>
+
+          <div className="bg-surface p-5 sm:p-6">
+            <dt className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
+              Potential payout
+            </dt>
+            <dd className="mt-2 font-display text-4xl font-semibold leading-none tracking-[-0.03em]">
+              {loading || !summary
+                ? "—"
+                : formatCredits(summary.potentialPayout)}
+            </dd>
+            <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
+              If every open pick wins
             </p>
           </div>
         </dl>
@@ -285,7 +330,7 @@ export default function PortfolioPage() {
                 <Link
                   key={bet.id}
                   href={`/markets/${bet.market.slug}`}
-                  className="group grid gap-3 border-b border-line py-5 sm:grid-cols-[minmax(0,1fr)_80px_130px_150px] sm:items-center"
+                  className="group grid gap-3 border-b border-line py-5 sm:grid-cols-[minmax(0,1fr)_80px_160px_150px] sm:items-center"
                 >
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
@@ -303,9 +348,17 @@ export default function PortfolioPage() {
                     <div>
                       <SideChip side={bet.outcome} />
                     </div>
-                    <p className="font-mono text-sm text-ink">
-                      {formatCredits(bet.amount)} cr
-                    </p>
+                    <div>
+                      <p className="font-mono text-sm text-ink">
+                        {formatCredits(bet.amount)} cr
+                      </p>
+                      {bet.potentialPayout !== null && (
+                        <p className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.08em] text-muted">
+                          ≈ {formatCredits(bet.potentialPayout)} cr if{" "}
+                          {bet.outcome} wins
+                        </p>
+                      )}
+                    </div>
                   </div>
 
                   <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted sm:text-right">
