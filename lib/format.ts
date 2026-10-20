@@ -18,3 +18,25 @@ export function formatPercent(value: number) {
 export function formatCents(value: number) {
   return `${Math.round(value)}¢`;
 }
+
+export function formatInitials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0] ?? "")
+    .join("")
+    .toUpperCase();
+}
+
+export function formatSignedCredits(value: number) {
+  if (value > 0) {
+    return `+${formatCredits(value)}`;
+  }
+
+  if (value < 0) {
+    return `−${formatCredits(Math.abs(value))}`;
+  }
+
+  return "0";
+}
