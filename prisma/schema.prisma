@@ -50,6 +50,8 @@ model User {
   wallet        Wallet?
   bets          Bet[]
   watchlist     Watchlist[]
+  comments      Comment[]
+  notifications Notification[]
   ledgerEntries LedgerEntry[]
   resolutions   MarketResolution[] @relation("AdminResolutions")
   auditEvents   AuditEvent[]
@@ -77,6 +79,8 @@ model Market {
   updatedAt   DateTime          @updatedAt
   bets        Bet[]
   watchlist   Watchlist[]
+  comments    Comment[]
+  notifications Notification[]
   resolution  MarketResolution?
   ledgers     LedgerEntry[]
   auditEvents AuditEvent[]
@@ -93,6 +97,35 @@ model Watchlist {
 
   @@unique([userId, marketId])
   @@index([userId])
+}
+
+model Notification {
+  id        String    @id @default(uuid())
+  userId    String
+  marketId  String?
+  type      String
+  title     String
+  body      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  market Market? @relation(fields: [marketId], references: [id], onDelete: SetNull)
+
+  @@index([userId, readAt])
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  userId    String
+  marketId  String
+  body      String
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  market Market @relation(fields: [marketId], references: [id], onDelete: Cascade)
+
+  @@index([marketId, createdAt])
 }
 
 model Bet {
