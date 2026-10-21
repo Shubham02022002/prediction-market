@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { commentCreationSchema } from "@/lib/validations/comment";
 import { marketParamsSchema } from "@/lib/validations/market";
+import { rateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 type RouteContext = {
   params: Promise<{ slug: string }>;
@@ -58,6 +59,15 @@ export async function POST(request: Request, { params }: RouteContext) {
 
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const limit = rateLimit(`comments:${session.user.id}`, {
+    limit: 10,
+    windowMs: 5 * 60_000,
+  });
+
+  if (!limit.ok) {
+    return rateLimitResponse(limit.retryAfterSeconds);
   }
 
   const paramsResult = marketParamsSchema.safeParse(await params);

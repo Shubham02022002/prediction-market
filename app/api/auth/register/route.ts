@@ -3,9 +3,19 @@ import bcrypt from "bcryptjs";
 import { Prisma } from "@/app/generated/prisma/client";
 import prisma from "@/lib/prisma";
 import { INITIAL_CREDITS } from "@/lib/credits";
+import { rateLimit, rateLimitResponse, clientIp } from "@/lib/rate-limit";
 import { userRegistrationSchema } from "@/lib/validations/user";
 
 export async function POST(request: Request) {
+  const limit = rateLimit(`register:${clientIp(request)}`, {
+    limit: 5,
+    windowMs: 60 * 60_000,
+  });
+
+  if (!limit.ok) {
+    return rateLimitResponse(limit.retryAfterSeconds);
+  }
+
   let requestBody: unknown;
 
   try {

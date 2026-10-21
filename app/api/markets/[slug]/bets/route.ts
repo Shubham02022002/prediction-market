@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { Prisma } from "@/app/generated/prisma/client";
 import { betPlacementSchema } from "@/lib/validations/bet";
 import { marketParamsSchema } from "@/lib/validations/market";
+import { rateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 type RouteContext = {
   params: Promise<{ slug: string }>;
@@ -16,6 +17,15 @@ export async function POST(request: Request, { params }: RouteContext) {
 
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const limit = rateLimit(`bets:${session.user.id}`, {
+    limit: 20,
+    windowMs: 60_000,
+  });
+
+  if (!limit.ok) {
+    return rateLimitResponse(limit.retryAfterSeconds);
   }
 
   const rawParams = await params;
