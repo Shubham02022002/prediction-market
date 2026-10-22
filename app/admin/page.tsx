@@ -1,7 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useCallback, useEffect, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useState,
+  type FormEvent,
+} from "react";
 import { formatCredits, formatDate, formatPercent } from "@/lib/format";
 
 type MarketStatus = "DRAFT" | "OPEN" | "CLOSED" | "RESOLVED" | "VOID";
@@ -59,6 +65,60 @@ const STATUS_CLASSES: Record<MarketStatus, string> = {
   VOID: "border-no/40 bg-no-soft text-no",
 };
 
+type MarketForm = {
+  slug: string;
+  question: string;
+  category: string;
+  closesAt: string;
+  description: string;
+  rules: string;
+};
+
+const EMPTY_FORM: MarketForm = {
+  slug: "",
+  question: "",
+  category: "",
+  closesAt: "",
+  description: "",
+  rules: "",
+};
+
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 100)
+    .replace(/-+$/g, "");
+}
+
+function toLocalInputValue(date: Date): string {
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+    .toISOString()
+    .slice(0, 16);
+}
+
+function firstFieldError(details: unknown): string | null {
+  if (!details || typeof details !== "object") {
+    return null;
+  }
+
+  const fieldErrors = (details as { fieldErrors?: Record<string, string[]> })
+    .fieldErrors;
+
+  if (!fieldErrors) {
+    return null;
+  }
+
+  for (const messages of Object.values(fieldErrors)) {
+    if (Array.isArray(messages) && messages.length > 0) {
+      return messages[0];
+    }
+  }
+
+  return null;
+}
+
 export default function AdminPage() {
   const [status, setStatus] = useState<MarketStatus | "ALL">("ALL");
   const [page, setPage] = useState(1);
@@ -70,6 +130,11 @@ export default function AdminPage() {
   const [expandedSlug, setExpandedSlug] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
   const [pendingKey, setPendingKey] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const [form, setForm] = useState<MarketForm>(EMPTY_FORM);
+  const [slugTouched, setSlugTouched] = useState(false);
 
   const loadMarkets = useCallback(
     async (targetStatus: MarketStatus | "ALL", targetPage: number) => {
@@ -185,6 +250,71 @@ export default function AdminPage() {
     }
   }
 
+  function resetForm() {
+    setForm(EMPTY_FORM);
+    setSlugTouched(false);
+    setCreateError("");
+  }
+
+  async function handleCreate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!form.closesAt) {
+      setCreateError("Choose a closing date and time.");
+      return;
+    }
+
+    setCreating(true);
+    setCreateError("");
+    setNotice(null);
+
+    try {
+      const response = await fetch("/api/markets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slug: form.slug,
+          question: form.question,
+          description: form.description,
+          rules: form.rules,
+          category: form.category,
+          closesAt: new Date(form.closesAt).toISOString(),
+        }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          firstFieldError(payload.details) ??
+            payload.error ??
+            "Unable to create market.",
+        );
+      }
+
+      setNotice({
+        tone: "success",
+        message: `Draft created: “${payload.market.question}”.`,
+      });
+      resetForm();
+      setShowCreate(false);
+
+      if (status === "DRAFT" && page === 1) {
+        refresh();
+      } else {
+        setStatus("DRAFT");
+        setPage(1);
+      }
+    } catch (createFailure) {
+      setCreateError(
+        createFailure instanceof Error
+          ? createFailure.message
+          : "Unable to create market.",
+      );
+    } finally {
+      setCreating(false);
+    }
+  }
+
   const markets = data?.markets ?? [];
   const pagination = data?.pagination;
   const pagePool = markets.reduce((sum, market) => sum + market.pool.total, 0);
@@ -262,14 +392,211 @@ export default function AdminPage() {
             })}
           </div>
 
-          <button
-            type="button"
-            onClick={refresh}
-            className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted transition-colors hover:text-ink"
-          >
-            Refresh
-          </button>
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              aria-expanded={showCreate}
+              aria-controls="create-market"
+              onClick={() => {
+                setShowCreate((current) => !current);
+                setCreateError("");
+              }}
+              className={`px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors ${
+                showCreate
+                  ? "border border-ink bg-ink text-paper"
+                  : "border border-ink text-ink hover:bg-ink hover:text-paper"
+              }`}
+            >
+              {showCreate ? "Cancel" : "+ New market"}
+            </button>
+            <button
+              type="button"
+              onClick={refresh}
+              className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted transition-colors hover:text-ink"
+            >
+              Refresh
+            </button>
+          </div>
         </div>
+
+        {showCreate && (
+          <form
+            id="create-market"
+            onSubmit={handleCreate}
+            className="border-b border-line bg-surface px-4 py-6 sm:px-6"
+          >
+            <div className="flex flex-wrap items-baseline justify-between gap-3">
+              <div>
+                <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted">
+                  New listing
+                </p>
+                <h2 className="mt-1 font-display text-xl font-semibold tracking-[-0.02em]">
+                  Draft a market
+                </h2>
+              </div>
+              <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
+                Created as draft — open it when ready
+              </p>
+            </div>
+
+            <div className="mt-5 grid gap-4 sm:grid-cols-3">
+              <label className="block sm:col-span-2">
+                <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-muted">
+                  Question
+                </span>
+                <input
+                  required
+                  minLength={5}
+                  maxLength={100}
+                  value={form.question}
+                  onChange={(event) => {
+                    const question = event.target.value;
+                    setForm((current) => ({
+                      ...current,
+                      question,
+                      slug: slugTouched ? current.slug : slugify(question),
+                    }));
+                  }}
+                  placeholder="Will the flagship model ship before July?"
+                  className="mt-1.5 h-10 w-full border border-line bg-paper px-3 text-sm text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-ink"
+                />
+              </label>
+
+              <label className="block">
+                <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-muted">
+                  Category
+                </span>
+                <input
+                  required
+                  minLength={2}
+                  maxLength={20}
+                  value={form.category}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      category: event.target.value,
+                    }))
+                  }
+                  placeholder="AI models"
+                  className="mt-1.5 h-10 w-full border border-line bg-paper px-3 text-sm text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-ink"
+                />
+              </label>
+
+              <label className="block sm:col-span-2">
+                <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-muted">
+                  Slug
+                </span>
+                <input
+                  required
+                  minLength={3}
+                  maxLength={100}
+                  pattern="[a-z0-9]+(-[a-z0-9]+)*"
+                  title="Lowercase kebab-case, e.g. flagship-model-2027"
+                  value={form.slug}
+                  onChange={(event) => {
+                    setSlugTouched(true);
+                    setForm((current) => ({
+                      ...current,
+                      slug: event.target.value,
+                    }));
+                  }}
+                  placeholder="flagship-model-2027"
+                  className="mt-1.5 h-10 w-full border border-line bg-paper px-3 font-mono text-[12px] text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-ink"
+                />
+              </label>
+
+              <label className="block">
+                <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-muted">
+                  Closes at
+                </span>
+                <input
+                  type="datetime-local"
+                  required
+                  min={toLocalInputValue(new Date())}
+                  value={form.closesAt}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      closesAt: event.target.value,
+                    }))
+                  }
+                  className="mt-1.5 h-10 w-full border border-line bg-paper px-3 font-mono text-[12px] text-ink outline-none transition-colors focus:border-ink"
+                />
+              </label>
+
+              <label className="block sm:col-span-3">
+                <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-muted">
+                  Description
+                </span>
+                <textarea
+                  required
+                  minLength={10}
+                  maxLength={200}
+                  rows={2}
+                  value={form.description}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      description: event.target.value,
+                    }))
+                  }
+                  placeholder="What this market measures, in one or two sentences."
+                  className="mt-1.5 w-full border border-line bg-paper px-3 py-2 text-sm leading-6 text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-ink"
+                />
+              </label>
+
+              <label className="block sm:col-span-3">
+                <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-muted">
+                  Resolution rules
+                </span>
+                <textarea
+                  required
+                  minLength={5}
+                  maxLength={100}
+                  rows={2}
+                  value={form.rules}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      rules: event.target.value,
+                    }))
+                  }
+                  placeholder="The exact source and condition used to settle it."
+                  className="mt-1.5 w-full border border-line bg-paper px-3 py-2 text-sm leading-6 text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-ink"
+                />
+              </label>
+            </div>
+
+            {createError && (
+              <p
+                role="alert"
+                className="mt-4 border-l-2 border-no bg-no-soft px-3 py-2 text-sm text-no"
+              >
+                {createError}
+              </p>
+            )}
+
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              <button
+                type="submit"
+                disabled={creating}
+                className="bg-ink px-4 py-2 font-mono text-[10px] uppercase tracking-[0.12em] text-paper transition-colors hover:bg-ink/85 disabled:opacity-40"
+              >
+                {creating ? "Creating…" : "Create draft"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCreate(false);
+                  resetForm();
+                }}
+                className="border border-line px-4 py-2 font-mono text-[10px] uppercase tracking-[0.12em] text-muted transition-colors hover:border-line-strong hover:text-ink"
+              >
+                Discard
+              </button>
+            </div>
+          </form>
+        )}
 
         {notice && (
           <div
