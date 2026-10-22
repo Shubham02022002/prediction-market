@@ -6,6 +6,7 @@ import {
   marketParamsSchema,
   marketResolutionSchema,
 } from "@/lib/validations/market";
+import { computeSettlement } from "@/lib/settlement";
 
 type RouteContext = {
   params: Promise<{ slug: string }>;
@@ -90,44 +91,21 @@ export async function POST(request: Request, { params }: RouteContext) {
         },
       });
 
-      const totalPool = bets.reduce((sum, bet) => sum + bet.amount, 0);
-      const winningBets = bets.filter((bet) => bet.outcome === outcome);
-      const winningPool = winningBets.reduce(
-        (sum, bet) => sum + bet.amount,
-        0,
-      );
-
-      const payouts: {
-        userId: string;
-        marketId: string;
-        betId: string;
-        type: "BET_PAYOUT";
-        amount: number;
-      }[] = [];
+      const settlement = computeSettlement(bets, outcome);
+      const payouts = settlement.payouts.map((payout) => ({
+        userId: payout.userId,
+        marketId: existing.id,
+        betId: payout.betId,
+        type: "BET_PAYOUT" as const,
+        amount: payout.amount,
+      }));
       const payoutsByUser = new Map<string, number>();
-      let totalPayout = 0;
 
-      if (winningPool > 0) {
-        for (const bet of winningBets) {
-          const payout = Math.floor((bet.amount * totalPool) / winningPool);
-
-          if (payout === 0) {
-            continue;
-          }
-
-          payouts.push({
-            userId: bet.userId,
-            marketId: existing.id,
-            betId: bet.id,
-            type: "BET_PAYOUT",
-            amount: payout,
-          });
-          payoutsByUser.set(
-            bet.userId,
-            (payoutsByUser.get(bet.userId) ?? 0) + payout,
-          );
-          totalPayout += payout;
-        }
+      for (const payout of settlement.payouts) {
+        payoutsByUser.set(
+          payout.userId,
+          (payoutsByUser.get(payout.userId) ?? 0) + payout.amount,
+        );
       }
 
       if (payouts.length > 0) {
@@ -188,11 +166,11 @@ export async function POST(request: Request, { params }: RouteContext) {
           details: {
             slug,
             outcome,
-            totalPool,
-            winningPool,
-            totalPayout,
-            winnerCount: winningBets.length,
-            dust: totalPool - totalPayout,
+            totalPool: settlement.totalPool,
+            winningPool: settlement.winningPool,
+            totalPayout: settlement.totalPayout,
+            winnerCount: settlement.winnerCount,
+            dust: settlement.dust,
           },
         },
       });
@@ -202,12 +180,12 @@ export async function POST(request: Request, { params }: RouteContext) {
         resolution,
         settlement: {
           outcome,
-          totalPool,
-          winningPool,
-          losingPool: totalPool - winningPool,
-          winnerCount: winningBets.length,
-          totalPayout,
-          dust: totalPool - totalPayout,
+          totalPool: settlement.totalPool,
+          winningPool: settlement.winningPool,
+          losingPool: settlement.losingPool,
+          winnerCount: settlement.winnerCount,
+          totalPayout: settlement.totalPayout,
+          dust: settlement.dust,
         },
       };
     }, { maxWait: 10_000, timeout: 15_000 });

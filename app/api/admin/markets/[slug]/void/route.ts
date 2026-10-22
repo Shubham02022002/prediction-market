@@ -6,6 +6,7 @@ import {
   marketParamsSchema,
   marketVoidSchema,
 } from "@/lib/validations/market";
+import { computeRefunds } from "@/lib/settlement";
 
 type RouteContext = {
   params: Promise<{ slug: string }>;
@@ -93,29 +94,21 @@ export async function POST(request: Request, { params }: RouteContext) {
         },
       });
 
-      const refunds: {
-        userId: string;
-        marketId: string;
-        betId: string;
-        type: "REFUND";
-        amount: number;
-      }[] = [];
+      const refundBreakdown = computeRefunds(bets);
+      const refunds = refundBreakdown.refunds.map((refund) => ({
+        userId: refund.userId,
+        marketId: existing.id,
+        betId: refund.betId,
+        type: "REFUND" as const,
+        amount: refund.amount,
+      }));
       const refundsByUser = new Map<string, number>();
-      let refundedAmount = 0;
 
-      for (const bet of bets) {
-        refunds.push({
-          userId: bet.userId,
-          marketId: existing.id,
-          betId: bet.id,
-          type: "REFUND",
-          amount: bet.amount,
-        });
+      for (const refund of refundBreakdown.refunds) {
         refundsByUser.set(
-          bet.userId,
-          (refundsByUser.get(bet.userId) ?? 0) + bet.amount,
+          refund.userId,
+          (refundsByUser.get(refund.userId) ?? 0) + refund.amount,
         );
-        refundedAmount += bet.amount;
       }
 
       if (refunds.length > 0) {
@@ -158,8 +151,8 @@ export async function POST(request: Request, { params }: RouteContext) {
           action: "MARKET_VOIDED",
           details: {
             slug,
-            refundedBets: bets.length,
-            refundedAmount,
+            refundedBets: refundBreakdown.betCount,
+            refundedAmount: refundBreakdown.totalRefund,
             notes: notes ?? null,
           },
         },
@@ -168,8 +161,8 @@ export async function POST(request: Request, { params }: RouteContext) {
       return {
         market: { slug, status: "VOID" as const },
         refund: {
-          betCount: bets.length,
-          amount: refundedAmount,
+          betCount: refundBreakdown.betCount,
+          amount: refundBreakdown.totalRefund,
         },
       };
     }, { maxWait: 10_000, timeout: 15_000 });
