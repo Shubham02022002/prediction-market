@@ -7,8 +7,9 @@ import { useCallback, useEffect, useState } from "react";
 import { Logo } from "@/components/brand";
 import { formatCredits } from "@/lib/format";
 
-const NAV_LINKS = [
+const NAV_LINKS: { href: string; label: string; authOnly?: boolean }[] = [
   { href: "/markets", label: "Markets" },
+  { href: "/watchlist", label: "Watchlist", authOnly: true },
   { href: "/leaderboard", label: "Leaderboard" },
   { href: "/portfolio", label: "Portfolio" },
 ];
@@ -93,7 +94,9 @@ export default function Navbar() {
           <Logo wordmarkClassName="hidden sm:inline" />
 
           <nav className="flex items-center gap-4 sm:gap-6">
-            {NAV_LINKS.map((link) => {
+            {NAV_LINKS.filter(
+              (link) => !link.authOnly || status === "authenticated",
+            ).map((link) => {
               const isActive = pathname.startsWith(link.href);
 
               return (
