@@ -3,7 +3,12 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { betListQuerySchema } from "@/lib/validations/bet";
 
-const REALIZED_TYPES = ["BET_STAKE", "BET_PAYOUT", "REFUND"] as const;
+const REALIZED_TYPES = [
+  "BET_STAKE",
+  "BET_PAYOUT",
+  "REFUND",
+  "POSITION_SALE",
+] as const;
 
 type PoolKey = `${string}:${"YES" | "NO"}`;
 

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { SideChip, StatusPill } from "@/components/market-ui";
 import { formatCredits, formatDate } from "@/lib/format";
 
@@ -48,6 +48,7 @@ const LEDGER_LABELS: Record<string, string> = {
   BET_STAKE: "Bet stake",
   BET_PAYOUT: "Payout",
   REFUND: "Refund",
+  POSITION_SALE: "Position sale",
   ADMIN_ADJUSTMENT: "Adjustment",
 };
 
@@ -61,9 +62,44 @@ export default function PortfolioPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [mounted, setMounted] = useState(false);
+  const [sellingId, setSellingId] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  const loadPortfolio = useCallback(async () => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const [walletResponse, betsResponse, ledgerResponse] = await Promise.all([
+        fetch("/api/wallet"),
+        fetch("/api/bets/me?limit=50"),
+        fetch("/api/wallet/ledger?limit=20"),
+      ]);
+
+      if (!walletResponse.ok || !betsResponse.ok || !ledgerResponse.ok) {
+        throw new Error("Unable to load your portfolio.");
+      }
+
+      const walletData = await walletResponse.json();
+      const betsData = await betsResponse.json();
+      const ledgerData = await ledgerResponse.json();
+
+      setWallet(walletData.wallet);
+      setBets(betsData.bets);
+      setSummary(betsData.summary ?? null);
+      setEntries(ledgerData.entries);
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Unable to load your portfolio.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -76,55 +112,39 @@ export default function PortfolioPage() {
       return;
     }
 
-    let cancelled = false;
+    void loadPortfolio();
+  }, [sessionStatus, loadPortfolio]);
 
-    async function loadPortfolio() {
-      setLoading(true);
-      setError("");
-
-      try {
-        const [walletResponse, betsResponse, ledgerResponse] =
-          await Promise.all([
-            fetch("/api/wallet"),
-            fetch("/api/bets/me?limit=50"),
-            fetch("/api/wallet/ledger?limit=20"),
-          ]);
-
-        if (!walletResponse.ok || !betsResponse.ok || !ledgerResponse.ok) {
-          throw new Error("Unable to load your portfolio.");
-        }
-
-        const walletData = await walletResponse.json();
-        const betsData = await betsResponse.json();
-        const ledgerData = await ledgerResponse.json();
-
-        if (!cancelled) {
-          setWallet(walletData.wallet);
-          setBets(betsData.bets);
-          setSummary(betsData.summary ?? null);
-          setEntries(ledgerData.entries);
-        }
-      } catch (loadError) {
-        if (!cancelled) {
-          setError(
-            loadError instanceof Error
-              ? loadError.message
-              : "Unable to load your portfolio.",
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
+  async function handleSell(bet: Bet) {
+    if (sellingId) {
+      return;
     }
 
-    loadPortfolio();
+    setSellingId(bet.id);
+    setError("");
 
-    return () => {
-      cancelled = true;
-    };
-  }, [sessionStatus]);
+    try {
+      const response = await fetch(`/api/bets/${bet.id}/sell`, {
+        method: "POST",
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Unable to sell this position.");
+      }
+
+      window.dispatchEvent(new Event("wallet:updated"));
+      await loadPortfolio();
+    } catch (sellError) {
+      setError(
+        sellError instanceof Error
+          ? sellError.message
+          : "Unable to sell this position.",
+      );
+    } finally {
+      setSellingId(null);
+    }
+  }
 
   const viewStatus = mounted ? sessionStatus : "loading";
 
@@ -326,46 +346,67 @@ export default function PortfolioPage() {
             </div>
           ) : (
             <div>
-              {bets.map((bet) => (
-                <Link
-                  key={bet.id}
-                  href={`/markets/${bet.market.slug}`}
-                  className="group grid gap-3 border-b border-line py-5 sm:grid-cols-[minmax(0,1fr)_80px_160px_150px] sm:items-center"
-                >
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <StatusPill status={bet.market.status} />
-                      <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
-                        Closes {formatDate(bet.market.closesAt)}
-                      </span>
-                    </div>
-                    <p className="mt-2 max-w-[56ch] font-display text-[17px] font-medium leading-snug tracking-[-0.01em] text-ink transition-colors group-hover:text-accent">
-                      {bet.market.question}
-                    </p>
-                  </div>
+              {bets.map((bet) => {
+                const sellable =
+                  bet.market.status === "OPEN" &&
+                  new Date(bet.market.closesAt).getTime() > Date.now();
 
-                  <div className="flex items-center gap-3 sm:contents">
-                    <div>
-                      <SideChip side={bet.outcome} />
+                return (
+                  <div
+                    key={bet.id}
+                    className="grid gap-3 border-b border-line py-5 sm:grid-cols-[minmax(0,1fr)_80px_160px_150px_120px] sm:items-center"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StatusPill status={bet.market.status} />
+                        <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
+                          Closes {formatDate(bet.market.closesAt)}
+                        </span>
+                      </div>
+                      <Link
+                        href={`/markets/${bet.market.slug}`}
+                        className="mt-2 block max-w-[56ch] font-display text-[17px] font-medium leading-snug tracking-[-0.01em] text-ink transition-colors hover:text-accent"
+                      >
+                        {bet.market.question}
+                      </Link>
                     </div>
-                    <div>
-                      <p className="font-mono text-sm text-ink">
-                        {formatCredits(bet.amount)} cr
-                      </p>
-                      {bet.potentialPayout !== null && (
-                        <p className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.08em] text-muted">
-                          ≈ {formatCredits(bet.potentialPayout)} cr if{" "}
-                          {bet.outcome} wins
+
+                    <div className="flex items-center gap-3 sm:contents">
+                      <div>
+                        <SideChip side={bet.outcome} />
+                      </div>
+                      <div>
+                        <p className="font-mono text-sm text-ink">
+                          {formatCredits(bet.amount)} cr
                         </p>
-                      )}
+                        {bet.potentialPayout !== null && (
+                          <p className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.08em] text-muted">
+                            ≈ {formatCredits(bet.potentialPayout)} cr if{" "}
+                            {bet.outcome} wins
+                          </p>
+                        )}
+                      </div>
                     </div>
-                  </div>
 
-                  <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted sm:text-right">
-                    Placed {formatDate(bet.createdAt)}
-                  </p>
-                </Link>
-              ))}
+                    <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted sm:text-right">
+                      Placed {formatDate(bet.createdAt)}
+                    </p>
+
+                    {sellable ? (
+                      <button
+                        type="button"
+                        onClick={() => handleSell(bet)}
+                        disabled={sellingId !== null}
+                        className="justify-self-start border border-line-strong px-3 py-2 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors hover:border-ink hover:bg-ink hover:text-paper disabled:cursor-not-allowed disabled:opacity-50 sm:justify-self-end"
+                      >
+                        {sellingId === bet.id ? "Selling…" : "Sell"}
+                      </button>
+                    ) : (
+                      <span aria-hidden="true" className="hidden sm:block" />
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </section>

@@ -4,7 +4,12 @@ import {
   type LeaderboardWindow,
 } from "@/lib/validations/leaderboard";
 
-const PROFIT_TYPES = ["BET_STAKE", "BET_PAYOUT", "REFUND"] as const;
+const PROFIT_TYPES = [
+  "BET_STAKE",
+  "BET_PAYOUT",
+  "REFUND",
+  "POSITION_SALE",
+] as const;
 
 export type TraderStanding = {
   userId: string;
