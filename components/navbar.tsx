@@ -83,7 +83,13 @@ export default function Navbar() {
     };
   }, [loadBalance, loadUnread]);
 
-  if (pathname === "/login" || pathname === "/register") {
+  const bareAuthPage =
+    pathname === "/login" ||
+    pathname === "/register" ||
+    pathname === "/forgot-password" ||
+    pathname === "/reset-password";
+
+  if (bareAuthPage) {
     return null;
   }
 

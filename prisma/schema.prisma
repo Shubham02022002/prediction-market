@@ -48,14 +48,15 @@ model User {
   accounts Account[]
   sessions Session[]
 
-  wallet        Wallet?
-  bets          Bet[]
-  watchlist     Watchlist[]
-  comments      Comment[]
-  notifications Notification[]
-  ledgerEntries LedgerEntry[]
-  resolutions   MarketResolution[] @relation("AdminResolutions")
-  auditEvents   AuditEvent[]
+  wallet              Wallet?
+  bets                Bet[]
+  watchlist           Watchlist[]
+  comments            Comment[]
+  notifications       Notification[]
+  ledgerEntries       LedgerEntry[]
+  passwordResetTokens PasswordResetToken[]
+  resolutions         MarketResolution[]   @relation("AdminResolutions")
+  auditEvents         AuditEvent[]
 }
 
 model Wallet {
@@ -68,23 +69,23 @@ model Wallet {
 }
 
 model Market {
-  id          String            @id @default(uuid())
-  slug        String            @unique
-  question    String
-  description String?
-  rules       String?
-  category    String
-  status      MarketStatus      @default(DRAFT)
-  closesAt    DateTime
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-  bets        Bet[]
-  watchlist   Watchlist[]
-  comments    Comment[]
+  id            String            @id @default(uuid())
+  slug          String            @unique
+  question      String
+  description   String?
+  rules         String?
+  category      String
+  status        MarketStatus      @default(DRAFT)
+  closesAt      DateTime
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  bets          Bet[]
+  watchlist     Watchlist[]
+  comments      Comment[]
   notifications Notification[]
-  resolution  MarketResolution?
-  ledgers     LedgerEntry[]
-  auditEvents AuditEvent[]
+  resolution    MarketResolution?
+  ledgers       LedgerEntry[]
+  auditEvents   AuditEvent[]
 }
 
 model Watchlist {
@@ -211,6 +212,18 @@ model Session {
   expires      DateTime
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model VerificationToken {
